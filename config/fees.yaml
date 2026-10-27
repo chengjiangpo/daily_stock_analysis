@@ -1,0 +1,42 @@
+# A 股费用分段（方案 §4.3）
+# 所有 rate 为小数；日期区间闭区间，空表示不设边界。
+# 印花税仅卖出；过户费按交易所分段；经手费/证管费双向。
+
+tick_size: "0.01"
+
+commission:
+  rate: 0.00025
+  min_per_order: 5.0
+
+stamp_duty:
+  segments:
+    - date_to: "2023-08-27"
+      rate: 0.001
+    - date_from: "2023-08-28"
+      rate: 0.0005
+
+transfer_fee:
+  segments:
+    # 2022-04-28 及以前：仅沪市 0.002%
+    - date_to: "2022-04-28"
+      exchanges: ["sh"]
+      rate: 0.00002
+    # 2022-04-29 起：沪深北统一 0.001%
+    - date_from: "2022-04-29"
+      exchanges: ["sh", "sz", "bj"]
+      rate: 0.00001
+
+handling_fee:
+  segments:
+    - date_to: "2023-08-27"
+      rate: 0.0000487
+    - date_from: "2023-08-28"
+      rate: 0.0000341
+
+regulatory_fee:
+  rate: 0.00002
+
+slippage_ticks:
+  base: 1
+  higher: 2
+  stress: 3

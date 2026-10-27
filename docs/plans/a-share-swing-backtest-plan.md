@@ -187,6 +187,8 @@ limit_down = quantize_half_up(pre_close * (1 - pct), 0.01)
 | BaoStock | 涨跌幅复权法，不参加分配 | 漏掉现金分红 |
 | AkShare（东财 qfq/hfq） | 未披露 | 使用前必须先校准 |
 
+> **实测修正（2026-10-26）**：阶段 -1 实测显示 BaoStock `adjustflag=1` 后复权**包含现金分红**，与上表「不参加分配、漏掉分红」的表述相反；证据见 [a-share-swing-data-probe.md](./a-share-swing-data-probe.md) §3。因此「后复权算信号 + 不复权算成交 + 分红单独入账」仍然成立，但持仓期现金分红必须在组合层补记，否则收益低估。
+
 **落地规则**：
 
 1. 信号一律在复权序列上计算；

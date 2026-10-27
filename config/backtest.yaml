@@ -1,0 +1,101 @@
+# 组合与风险预算（方案 §7）+ 成本档（方案 §6.3）
+
+aum: 300000
+max_positions: 5
+max_position_pct: 0.25
+max_gross_exposure: 0.95
+risk_per_trade: 0.01
+max_new_positions_per_day: 2
+max_per_industry: 2
+lot_size: 100
+min_price: 2.0
+min_avg_amount_20d: 50000000
+
+# 容量约束：单笔不超过 当日成交额/成交量/20 日均额 的该比例
+participation_cap: 0.02
+
+# 回撤熔断
+drawdown_halve_at: 0.12
+drawdown_stop_at: 0.18
+drawdown_cooldown_days: 20
+
+# 连续亏损降档
+loss_streak_threshold: 5
+loss_streak_risk: 0.005
+
+# 成本档：佣金率覆盖 + 滑点 tick 数
+cost_tiers:
+  base:
+    commission_rate: 0.00025
+    slippage_ticks: 1
+  higher:
+    commission_rate: 0.0003
+    slippage_ticks: 2
+  stress:
+    commission_rate: 0.0005
+    slippage_ticks: 3
+
+# 主策略 v1 冻结参数（方案附录 A）
+strategies:
+  trend_pullback_restart:
+    version: v1
+    trend:
+      ma_fast: 20
+      ma_slow: 60
+      ma_slope_window: 10
+      ma_slope_min: -0.02
+      ret20_min: -0.05
+      deviation_max: 0.08
+    pullback:
+      swing_window: 15
+      depth_min: 0.04
+      depth_max: 0.12
+      low_guard: 0.85
+      ma60_guard: 0.98
+    volume:
+      shrink_window: 3
+      base_window: 10
+      shrink_min: 0.50
+      shrink_max: 0.90
+    restart:
+      breakout_window: 4
+      vol_mult: 1.2
+      close_pos_min: 0.60
+      ret_min: 0.005
+      ret_max: 0.05
+    entry:
+      gap_max: 0.03
+    exit:
+      stop_mode: structural
+      stop_buffer: 0.995
+      stop_max_pct: 0.08
+      stop_min_pct: 0.03
+      take_profit_r: 2.0
+      trend_exit_ma: 10
+      max_hold_days: 8
+  box_breakout:
+    version: v1
+    box:
+      window: 10
+      amplitude_max: 0.10
+      drift_max: 0.08
+    breakout:
+      vol_mult_min: 1.5
+      vol_mult_max: 5.0
+      close_pos_min: 0.7
+      ret_min: 0.01
+      ret_max: 0.07
+    trend:
+      ma_fast: 20
+      ma_slow: 60
+      ma_slow_guard: 0.98
+    entry:
+      gap_max: 0.03
+    exit:
+      stop_mode: structural
+      stop_buffer: 0.995
+      stop_max_pct: 0.08
+      stop_min_pct: 0.03
+      take_profit_r: 2.0
+      trend_exit_ma: 10
+      max_hold_days: 8

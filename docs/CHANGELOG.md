@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### 新功能
+
+- 📈 **A 股短线波段选股与组合级回测骨架** — 新增 `src/strategy/`、`src/sim/`、`src/validation/`、`src/data/` 与两个 CLI：`scripts/mvp_edge_check.py`（阶段 0 毛超额 go/no-go）和 `scripts/run_backtest.py`（组合回测 / 滚动前推）。规则与费用按日期分段（`config/*.yaml`），撮合用 Decimal 处理涨跌停价，T+1 开盘执行且卖出资金不用于同日买入；数据侧支持 BaoStock 原始+后复权、历史时点股票池、质量校验与快照哈希。方案与任务拆分见 `docs/plans/a-share-swing-backtest-plan.md` 与 `docs/plans/a-share-swing-backtest-execution.md`。
+
 ### 修复
 
 - 📦 **恢复 LiteLLM 官方 PyPI 安装并锁定安全上限** — `requirements.txt` 重新使用 `pip install litellm` 的官方 PyPI 安装路径，并在保留历史最低要求 `>=1.80.10` 的同时增加 `<1.82.7` 的安全上限，避免误装已被移除的 `1.82.7` / `1.82.8` 风险版本；Windows 桌面打包脚本也同步回退到标准 `pip install -r requirements.txt` 链路，减少特殊下载分支带来的维护成本。

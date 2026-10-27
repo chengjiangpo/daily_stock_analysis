@@ -1,0 +1,96 @@
+# A 股分段交易规则（方案 §4.2）
+# 日期区间为闭区间；date_from/date_to 为空表示不设边界。
+# 匹配顺序：先按 st 特例，再按板块通用；同一板块按列表顺序首个命中生效。
+
+tick_size: "0.01"
+lot_size: 100
+
+boards:
+  main: ["600", "601", "603", "605", "000", "001", "002", "003"]
+  gem: ["300", "301"]
+  star: ["688", "689"]
+  bse: ["4", "8", "920"]
+
+# 常规涨跌幅（不含新股、退市整理期）
+limit_segments:
+  # 主板：2026-07-06 起 ST 与普通股同为 10%，用通配段覆盖，必须排在最前
+  - board: main
+    date_from: "2026-07-06"
+    up: 0.10
+    down: 0.10
+  # 主板 ST 历史 5%
+  - board: main
+    st: true
+    date_to: "2026-07-05"
+    up: 0.05
+    down: 0.05
+  # 主板普通股
+  - board: main
+    st: false
+    up: 0.10
+    down: 0.10
+  # 创业板注册制后（ST 亦 20%）
+  - board: gem
+    date_from: "2020-08-24"
+    up: 0.20
+    down: 0.20
+  # 创业板注册制前
+  - board: gem
+    date_to: "2020-08-23"
+    up: 0.10
+    down: 0.10
+  # 科创板
+  - board: star
+    date_from: "2019-07-22"
+    up: 0.20
+    down: 0.20
+  # 北交所
+  - board: bse
+    date_from: "2021-11-15"
+    up: 0.30
+    down: 0.30
+
+# 新股上市初期（listed_days 从 1 开始，含上市首日）
+new_stock_segments:
+  # 主板注册制：前 5 日不设限
+  - board: main
+    date_from: "2023-04-10"
+    first_days: 5
+    up: null
+    down: null
+  # 主板核准制：首日有效申报 +44% / -36%
+  - board: main
+    date_to: "2023-04-09"
+    first_days: 1
+    up: 0.44
+    down: 0.36
+  # 创业板注册制：前 5 日不设限
+  - board: gem
+    date_from: "2020-08-24"
+    first_days: 5
+    up: null
+    down: null
+  # 创业板核准制：首日 +44% / -36%
+  - board: gem
+    date_to: "2020-08-23"
+    first_days: 1
+    up: 0.44
+    down: 0.36
+  # 科创板：前 5 日不设限
+  - board: star
+    first_days: 5
+    up: null
+    down: null
+  # 北交所：首日不设限
+  - board: bse
+    first_days: 1
+    up: null
+    down: null
+
+# 退市整理期：首日不设限，其后按板块常规
+delisting:
+  board_pct:
+    main: 0.10
+    gem: 0.20
+    star: 0.20
+    bse: 0.30

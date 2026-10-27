@@ -189,6 +189,9 @@ M0-08 ────────────────────────�
 | 数据 | `src/data/` | BaoStock 原始+后复权、字段标准化、质量校验、快照哈希、时点池、行情装载 |
 | 验证 | `src/validation/` | 时间切分、滚动窗口、bootstrap、DSR/PBO、绩效指标 |
 | 服务 | `src/services/backtest_run_service.py` | 一次运行 + 报告落盘 |
+| 服务 | `src/services/swing_backtest_service.py` | 运行库扫描、详情聚合、文件下载、缓存异步运行 |
+| API | `api/v1/endpoints/swing_backtest.py` | `/api/v1/swing-backtest` 运行列表/详情/状态/触发/下载 |
+| Web | `apps/dsa-web/src/pages/SwingBacktestPage.tsx` | `/swing-backtest`：go/no-go、净值、交易、诊断、运行表单 |
 | CLI | `scripts/mvp_edge_check.py`、`scripts/run_backtest.py` | MVP go/no-go、组合回测、滚动前推 |
 
 ### 12.2 命令
@@ -218,6 +221,20 @@ python3.12 -m venv .venv
 .venv/bin/python scripts/run_backtest.py --walk-forward \
   --start 2016-01-01 --end 2026-09-30 --out reports/backtest/wf
 ```
+
+### 12.2.1 Web / API
+
+```bash
+# 页面（开发）
+cd apps/dsa-web && npm run dev
+# 打开 http://localhost:5173/swing-backtest
+
+# 只读 API
+curl http://127.0.0.1:8000/api/v1/swing-backtest/runs
+curl http://127.0.0.1:8000/api/v1/swing-backtest/runs/mvp
+```
+
+说明见 [docs/swing-backtest.md](../../docs/swing-backtest.md)。
 
 ### 12.3 已知限制（必须在报告中声明）
 

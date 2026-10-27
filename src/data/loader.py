@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from .baostock_bars import discover_universe, fetch_industry_map, fetch_many
+from .baostock_bars import _load_cached, discover_universe, fetch_industry_map, fetch_many
 from .bars import normalize_daily_bars
 
 logger = logging.getLogger(__name__)
@@ -86,4 +86,47 @@ def load_frames(
                 frame["industry"] = industry_map.get(code, "UNKNOWN")
             else:
                 frame["industry"] = frame["industry"].fillna(industry_map.get(code, "UNKNOWN"))
+    return frames
+
+
+def load_cached_frames(
+    cache_dir: str | Path,
+    start: str,
+    end: str,
+    max_codes: int = 0,
+    attach_industry: bool = True,
+) -> Dict[str, pd.DataFrame]:
+    """只读本地缓存，不触发任何网络登录（供 Web/API 使用）。"""
+    root = Path(cache_dir)
+    if not root.exists():
+        return {}
+    paths = sorted(root.glob("raw/*.csv.gz"))
+    if max_codes and 0 < max_codes < len(paths):
+        # 等距抽样，避免只取代码段前部造成样本偏差。
+        step = len(paths) / max_codes
+        paths = [paths[int(index * step)] for index in range(max_codes)]
+
+    frames: Dict[str, pd.DataFrame] = {}
+    start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
+    for path in paths:
+        code = path.name.split(".")[0]
+        frame = _load_cached(root, code, start, end)
+        if frame is None:
+            continue
+        part = frame[(frame.index >= start_ts) & (frame.index <= end_ts)]
+        if not part.empty:
+            frames[code] = part
+
+    if attach_industry:
+        industry_file = root / "industry.json"
+        if industry_file.exists():
+            import json
+
+            try:
+                industry_map = json.loads(industry_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                industry_map = {}
+            if industry_map:
+                for code, frame in frames.items():
+                    frame["industry"] = industry_map.get(code, "UNKNOWN")
     return frames

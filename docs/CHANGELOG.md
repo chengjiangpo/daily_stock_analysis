@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### 新功能
 
 - 📈 **A 股短线波段选股与组合级回测骨架** — 新增 `src/strategy/`、`src/sim/`、`src/validation/`、`src/data/` 与两个 CLI：`scripts/mvp_edge_check.py`（阶段 0 毛超额 go/no-go）和 `scripts/run_backtest.py`（组合回测 / 滚动前推）。规则与费用按日期分段（`config/*.yaml`），撮合用 Decimal 处理涨跌停价，T+1 开盘执行且卖出资金不用于同日买入；数据侧支持 BaoStock 原始+后复权、历史时点股票池、质量校验与快照哈希。方案与任务拆分见 `docs/plans/a-share-swing-backtest-plan.md` 与 `docs/plans/a-share-swing-backtest-execution.md`。
+- 🖥️ **波段回测 Web 页面与 API** — 新增 `/swing-backtest` 页面与 `/api/v1/swing-backtest` 接口：列出 `reports/backtest/*` 与 `reports/mvp` 运行、查看 go/no-go 判定/净值/交易/诊断/拒单、下载报告文件，并支持基于本地缓存异步触发回测（串行、最多 800 只）。使用说明见 `docs/swing-backtest.md`。
 
 ### 修复
 

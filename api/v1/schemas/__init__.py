@@ -46,6 +46,13 @@ from api.v1.schemas.backtest import (
     BacktestResultsResponse,
     PerformanceMetrics,
 )
+from api.v1.schemas.swing_backtest import (
+    SwingRunRequest,
+    SwingRunSummary,
+    SwingRunsResponse,
+    SwingRunDetail,
+    SwingRunStatus,
+)
 from api.v1.schemas.system_config import (
     SystemConfigFieldSchema,
     SystemConfigCategorySchema,
@@ -126,6 +133,12 @@ __all__ = [
     "BacktestResultItem",
     "BacktestResultsResponse",
     "PerformanceMetrics",
+    # swing backtest
+    "SwingRunRequest",
+    "SwingRunSummary",
+    "SwingRunsResponse",
+    "SwingRunDetail",
+    "SwingRunStatus",
     # system config
     "SystemConfigFieldSchema",
     "SystemConfigCategorySchema",

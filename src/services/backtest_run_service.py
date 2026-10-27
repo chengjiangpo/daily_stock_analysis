@@ -84,9 +84,22 @@ def run_backtest(
     aum: Optional[float] = None,
     out_dir: str | Path = "reports/backtest/latest",
     record_diagnostics: bool = True,
+    constrained: bool = True,
+    fixed_notional: float = 60000.0,
+    run_id: Optional[str] = None,
 ) -> RunOutputs:
     strategy = build_strategy(strategy_name)
-    portfolio_config = load_portfolio_config(aum=aum)
+    base_portfolio = load_portfolio_config(aum=aum)
+    if constrained:
+        portfolio_config = base_portfolio
+        participation_cap = float(os.getenv("BACKTEST_PARTICIPATION_CAP", 0.02))
+    else:
+        # 信号级：固定名义本金，无组合约束；大 AUM 仅为账务容器。
+        portfolio_config = PortfolioConfig(
+            aum=Decimal(str(aum if aum is not None else 100_000_000)),
+            lot_size=base_portfolio.lot_size,
+        )
+        participation_cap = 1.0
     pool_config = load_pool_config()
     engine = BacktestEngine(
         strategy,
@@ -94,10 +107,12 @@ def run_backtest(
         FeeModel.load(cost_tier=cost_tier),
         portfolio_config,
         pool_config,
-        participation_cap=float(os.getenv("BACKTEST_PARTICIPATION_CAP", 0.02)),
+        participation_cap=participation_cap,
         start=start,
         end=end,
         record_diagnostics=record_diagnostics,
+        constrained=constrained,
+        fixed_notional=Decimal(str(fixed_notional)),
     )
     result = engine.run()
     return persist_result(
@@ -108,7 +123,13 @@ def run_backtest(
         start=start,
         end=end,
         data_hash=snapshot_hash(frames),
-        extra={"codes": len(engine.frames), "params": strategy.params},
+        extra={
+            "codes": len(engine.frames),
+            "params": strategy.params,
+            "mode": "portfolio" if constrained else "signal",
+            "fixed_notional": fixed_notional if not constrained else None,
+        },
+        run_id=run_id,
     )
 
 
@@ -121,6 +142,7 @@ def persist_result(
     end: date,
     data_hash: str,
     extra: Optional[dict] = None,
+    run_id: Optional[str] = None,
 ) -> RunOutputs:
     run_dir = Path(out_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -146,7 +168,7 @@ def persist_result(
     yearly.to_csv(run_dir / "yearly_returns.csv", header=["return"])
 
     metadata = {
-        "run_id": pd.Timestamp.now().strftime("bt-%Y%m%d-%H%M%S"),
+        "run_id": run_id or pd.Timestamp.now().strftime("bt-%Y%m%d-%H%M%S"),
         "strategy": strategy,
         "cost_tier": cost_tier,
         "period": [str(start), str(end)],

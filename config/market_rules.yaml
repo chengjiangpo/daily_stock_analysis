@@ -58,8 +58,11 @@ new_stock_segments:
     first_days: 5
     up: null
     down: null
-  # 主板核准制：首日有效申报 +44% / -36%
+  # 主板核准制：首日集合竞价 ±20%、连续竞价有效申报 +44%/-36%
+  # （2013-12-13 规则至 2023-04-09；V3.0 errata E3 精确化。
+  #   股票池要求上市满 120 交易日，本段仅作完备性配置，引擎按连续竞价区间 +44%/-36% 建模）
   - board: main
+    date_from: "2013-12-13"
     date_to: "2023-04-09"
     first_days: 1
     up: 0.44
@@ -94,3 +97,13 @@ delisting:
     gem: 0.20
     star: 0.20
     bse: 0.30
+
+# 盘后固定价格交易（V3.0 errata E2，完备性配置，当前引擎未建模，仅撮合实验组 S3-08 使用）
+# - 2026-07-06 起扩至沪深全部 A 股（15:05–15:30，以当日收盘价撮合）；
+# - 北交所 2026 年已自行推出盘后固定价格交易（跨市场/阶段 ≥2 扩展北交所时单独建模）。
+after_hours_fixed_price:
+  date_from: "2026-07-06"
+  window: "15:05-15:30"
+  match_price: close
+  bse_available: true
+  modeled: false

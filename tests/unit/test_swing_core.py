@@ -89,12 +89,13 @@ def test_stamp_duty_switch_and_min_commission() -> None:
 
 
 def test_transfer_fee_before_and_after_2022_04_29() -> None:
+    # V3.0 errata E1：2015-08-01 起沪深统一 0.002% 双向（原「仅沪市」表述错误）
     model = FeeModel.load(cost_tier="base")
     sh_old = model.compute("buy", 10, 1000, date(2022, 4, 28), "600000")
     sz_old = model.compute("buy", 10, 1000, date(2022, 4, 28), "000001")
     sz_new = model.compute("buy", 10, 1000, date(2022, 4, 29), "000001")
     assert sh_old.transfer_fee == Decimal("0.20")
-    assert sz_old.transfer_fee == Decimal("0.00")
+    assert sz_old.transfer_fee == Decimal("0.20")
     assert sz_new.transfer_fee == Decimal("0.10")
 
 

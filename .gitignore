@@ -49,7 +49,11 @@ env/
 # 数据和日志
 /data/
 logs/
-reports/
+reports/*
+# 试验账本必须入库（V3.0 §3.2 / I-3），其余 reports/ 产物仍忽略
+!reports/experiments/
+!reports/experiments/ledger.csv
+!reports/experiments/README.md
 *.db
 *.sqlite
 *.sqlite3

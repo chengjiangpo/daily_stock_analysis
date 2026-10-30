@@ -33,12 +33,19 @@ if str(REPO_ROOT) not in sys.path:
 from src.data.bars import quality_report, snapshot_hash, write_quality_report  # noqa: E402
 from src.data.fixtures import build_fixture_frames  # noqa: E402
 from src.data.loader import load_frames  # noqa: E402
+from src.data.market_caps import (  # noqa: E402
+    MatchedControlConfig,
+    attach_market_caps,
+    load_caps_meta,
+    load_market_caps,
+)
 from src.data.pool import build_pool_panel  # noqa: E402
 from src.sim.engine import BacktestEngine  # noqa: E402
 from src.sim.fees import FeeModel  # noqa: E402
 from src.sim.portfolio import PortfolioConfig  # noqa: E402
 from src.strategy import build_strategy  # noqa: E402
 from src.strategy.benchmarks import (  # noqa: E402
+    MatchedControlBench,
     add_buckets,
     basket_forward_return,
     sample_baskets,
@@ -70,6 +77,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cost-tier", default="base", choices=("base", "higher", "stress"))
     parser.add_argument("--aum", type=float, default=300000.0)
     parser.add_argument("--bench-sims", type=int, default=200)
+    parser.add_argument(
+        "--b2",
+        default="auto",
+        choices=("auto", "matched", "legacy"),
+        help="B2 口径：matched=同日同市值分档全体均值+留一（V3.0 §4.4，需市值缓存）；"
+        "legacy=随机 5 只×N 次中位数（MVP 冻结口径）；auto=有市值缓存用 matched，否则 legacy",
+    )
+    parser.add_argument("--caps-dir", default="data/cache/market_caps", help="市值缓存目录")
+    parser.add_argument(
+        "--size-edges",
+        default=None,
+        help="流通市值分档边界（亿元），逗号分隔，如 20,30,45,70；默认读 config/backtest.yaml",
+    )
     parser.add_argument("--offline-fixtures", action="store_true", help="使用合成行情跑通流程")
     parser.add_argument("--portfolio-constrained", action="store_true",
                         help="启用 5 仓/2 笔/日/回撤熔断组合约束（默认信号级评估）")
@@ -90,6 +110,9 @@ def attach_benchmark(
     frames: Dict[str, pd.DataFrame],
     signal_frames: Dict[str, pd.DataFrame],
     sims: int,
+    b2_mode: str = "legacy",
+    matched_bench: Optional[MatchedControlBench] = None,
+    matched_panel: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     if trades.empty:
         return trades
@@ -98,6 +121,9 @@ def attach_benchmark(
         return trades
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.drop_duplicates(["date", "code"], keep="last")
+
+    if b2_mode == "matched":
+        return _attach_matched_benchmark(trades, frames, matched_bench, matched_panel)
 
     snapshot_cache: dict[pd.Timestamp, pd.DataFrame] = {}
 
@@ -141,8 +167,59 @@ def attach_benchmark(
         bench_median = bench.get("median")
         record["gross_return"] = gross_return
         record["bench_return"] = bench_median
+        record["bench_market_return"] = None
+        record["bench_n"] = bench.get("sims", 0)
+        record["size_source"] = "proxy_quantile"
         record["excess_return"] = gross_return - bench_median if bench_median is not None else None
+        record["excess_market_return"] = None
         record["bench_sims"] = bench.get("sims", 0)
+        record["net_return"] = float(trade["pnl"]) / (
+            float(trade["entry_price"]) * float(trade["quantity"])
+        )
+        rows.append(record)
+    return pd.DataFrame(rows)
+
+
+def _attach_matched_benchmark(
+    trades: pd.DataFrame,
+    frames: Dict[str, pd.DataFrame],
+    matched_bench: Optional[MatchedControlBench],
+    matched_panel: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """B2 修正口径：同日同市值分档全体可买股票均值（留一）+ 市场口径对照。"""
+    if matched_bench is None or matched_panel is None:
+        raise ValueError("matched 口径需要 MatchedControlBench 与分档面板")
+    lookup = matched_panel.set_index(["date", "code"])
+    rows = []
+    for _, trade in trades.iterrows():
+        record = trade.to_dict()
+        signal_date = pd.Timestamp(trade["signal_date"])
+        key = (signal_date, trade["code"])
+        size_bucket = -1
+        if key in lookup.index:
+            row = lookup.loc[key]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[-1]
+            size_bucket = int(row["size_bucket"])
+        result = matched_bench.benchmark(
+            trade["code"],
+            signal_date.date(),
+            pd.Timestamp(trade["entry_date"]).date(),
+            pd.Timestamp(trade["exit_date"]).date(),
+            size_bucket,
+        )
+        gross_return = float(trade["exit_price"]) / float(trade["entry_price"]) - 1.0
+        control = result["control_mean"]
+        market = result["market_mean"]
+        record["gross_return"] = gross_return
+        record["bench_return"] = control
+        record["bench_market_return"] = market
+        record["bench_n"] = result["control_n"]
+        record["bench_market_n"] = result["market_n"]
+        record["size_source"] = result["size_source"]
+        record["excess_return"] = gross_return - control if control is not None else None
+        record["excess_market_return"] = gross_return - market if market is not None else None
+        record["bench_sims"] = 0
         record["net_return"] = float(trade["pnl"]) / (
             float(trade["entry_price"]) * float(trade["quantity"])
         )
@@ -180,7 +257,19 @@ def write_summary(
     code_count: int,
     rejections: dict,
     trades_by_year: dict,
+    b2_mode: str = "legacy",
+    b2_coverage: Optional[dict] = None,
 ) -> None:
+    b2_label = (
+        "修正口径：同日同流通市值分档全体可买股票均值 + 留一剔除（V3.0 §4.4）"
+        if b2_mode == "matched"
+        else "legacy 口径：同分位桶随机 5 只 × N 次取中位数（MVP 冻结口径）"
+    )
+    bench_label = (
+        "B2 匹配对照每笔收益均值（留一）"
+        if b2_mode == "matched"
+        else "B2 基准每笔收益中位数均值"
+    )
     lines = [
         "# MVP 可行性切片报告",
         "",
@@ -189,6 +278,7 @@ def write_summary(
         f"{'AUM ' + format(args.aum, ',.0f') if args.portfolio_constrained else '信号级固定 6 万/笔'}）",
         f"- 股票数：{code_count}；交易日：{result_metadata.get('days')}",
         f"- 评估模式：{'信号级（固定 6 万名义本金，无组合约束）' if not args.portfolio_constrained else '组合约束'}",
+        f"- B2 口径：{b2_label}",
         f"- 结论：**{decision}** — {decision_reason}",
         "",
         "## 1. 成本倒推（方案 §6.3）",
@@ -206,13 +296,29 @@ def write_summary(
         "|---|---|",
         f"| 交易笔数 | {summary['n_trades']} |",
         f"| 每笔毛收益均值 | {_pct(summary['mean_gross'])} |",
-        f"| B2 基准每笔收益中位数均值 | {_pct(summary['mean_bench'])} |",
+        f"| {bench_label} | {_pct(summary['mean_bench'])} |",
+    ]
+    if b2_mode == "matched":
+        lines.append(
+            f"| B2 市场口径对照均值（同日全池，留一） | {_pct(summary.get('mean_market_bench'))} |"
+        )
+    lines += [
         f"| 每笔毛超额均值 | {_pct(summary['mean_excess'])} |",
         f"| 超额 t 值 | {summary['t_stat']:.2f} |",
         f"| bootstrap 95% CI | [{_pct(summary['ci_low'])}, {_pct(summary['ci_high'])}] |",
         f"| 扣成本后每笔净期望 | {_pct(summary['net_expectancy'])} |",
         f"| 胜率 / PF | {trade_stats['win_rate']:.1%} / {trade_stats['profit_factor']:.2f} |",
         "",
+    ]
+    if b2_mode == "matched" and b2_coverage:
+        lines += [
+            f"> 市值覆盖：行覆盖率 {b2_coverage.get('row_coverage', 0):.1%}，"
+            f"全量分档 {b2_coverage.get('dates_full_coverage', 0)}/{b2_coverage.get('dates_total', 0)} 日，"
+            f"回退代理分档 {b2_coverage.get('dates_fallback_proxy', 0)} 日"
+            f"（市值源区间 {b2_coverage.get('first_caps_date')} ~ {b2_coverage.get('last_caps_date')}）",
+            "",
+        ]
+    lines += [
         "## 3. go/no-go 判据",
         "",
         "| 判据 | 通过 |",
@@ -239,9 +345,18 @@ def write_summary(
         "",
         "## 6. 限制与未覆盖项",
         "",
-        "- B2 的 size 代理为 20 日均额（缺少全市场市值数据），行业字段若缺失则退化为全池抽样。",
+    ]
+    if b2_mode == "legacy":
+        lines.append(
+            "- B2 的 size 代理为 20 日均额（缺少全市场市值数据），行业字段若缺失则退化为全池抽样。"
+        )
+    else:
+        lines.append(
+            "- B2 分档市值来自 stock_eod_daily 导出缓存；覆盖率不足的交易日回退 20 日均额代理分位桶（见上方覆盖说明）。"
+        )
+    lines += [
         "- 未建模送转/现金分红（阶段 3）；BaoStock 后复权已含分红，但持仓期现金分红未入账，组合收益偏保守。",
-        "- 未使用官方 stk_limit，涨跌停价按分段规则自算。",
+        "- 未使用官方 stk_limit，涨跌停价按分段规则自算（市值缓存含官方涨跌停价，可用 scripts/fetch_market_caps.py --cross-check 对账）。",
         "- 退市股是否可得取决于数据源实测（见 docs/plans/a-share-swing-data-probe.md）。",
         "- 数据质量详见 data_quality_report.json；当前未自动剔除隔离候选（MVP 阶段）。",
         "",
@@ -307,7 +422,50 @@ def main() -> int:
     quality = [quality_report(frame, code) for code, frame in engine.frames.items()]
     write_quality_report(quality, out_dir / "data_quality_report.json")
 
-    trades = attach_benchmark(result.trades, frames, engine.frames, sims=args.bench_sims)
+    trades = result.trades
+    b2_mode = args.b2
+    matched_bench = None
+    matched_panel = None
+    caps_meta: dict = {}
+    coverage_dict: Optional[dict] = None
+    if b2_mode == "auto":
+        try:
+            load_market_caps(args.caps_dir)
+            b2_mode = "matched"
+        except (FileNotFoundError, ValueError):
+            logger.warning("市值缓存不可用（%s），B2 回退 legacy 抽样口径", args.caps_dir)
+            b2_mode = "legacy"
+    if b2_mode == "matched":
+        caps = load_market_caps(args.caps_dir)
+        caps_meta = load_caps_meta(args.caps_dir)
+        control_config = MatchedControlConfig.load()
+        if args.size_edges:
+            control_config = MatchedControlConfig(
+                size_edges_yi=tuple(float(v) for v in args.size_edges.split(",")),
+                min_coverage=control_config.min_coverage,
+                entry_gap_max=control_config.entry_gap_max,
+            )
+        panel = build_pool_panel(engine.frames)
+        matched_panel, coverage = attach_market_caps(panel, caps, control_config)
+        coverage_dict = coverage.to_dict()
+        logger.info(
+            "B2 修正口径：分档边界 %s 亿；市值行覆盖率 %.1f%%（%d/%d 日全量，%d 日回退代理）",
+            list(control_config.size_edges_yi),
+            coverage.row_coverage * 100,
+            coverage.dates_full_coverage,
+            coverage.dates_total,
+            coverage.dates_fallback_proxy,
+        )
+        matched_bench = MatchedControlBench(frames, matched_panel, control_config)
+    trades = attach_benchmark(
+        trades,
+        frames,
+        engine.frames,
+        sims=args.bench_sims,
+        b2_mode=b2_mode,
+        matched_bench=matched_bench,
+        matched_panel=matched_panel,
+    )
     equity_series = pd.Series(
         result.equity["equity"].to_numpy(),
         index=pd.to_datetime(result.equity["trade_date"]),
@@ -330,6 +488,11 @@ def main() -> int:
         "n_benchmarked": int(len(excess)),
         "mean_gross": float(trades["gross_return"].mean()) if not trades.empty else None,
         "mean_bench": float(trades["bench_return"].dropna().mean()) if not trades.empty else None,
+        "mean_market_bench": (
+            float(trades["bench_market_return"].dropna().mean())
+            if not trades.empty and "bench_market_return" in trades.columns
+            else None
+        ),
         "mean_excess": mean_excess,
         "t_stat": t_stat,
         "ci_low": bootstrap.get("ci_low"),
@@ -357,6 +520,13 @@ def main() -> int:
         "codes": len(engine.frames),
         "engine": result.metadata,
         "bench_sims": args.bench_sims,
+        "b2": {
+            "caliber": b2_mode,
+            "size_edges_yi": list(MatchedControlConfig.load().size_edges_yi),
+            "caps_source": caps_meta.get("source"),
+            "caps_range": caps_meta.get("range"),
+            "coverage": coverage_dict,
+        },
         "created_at": pd.Timestamp.now().isoformat(),
     }
 
@@ -384,6 +554,7 @@ def main() -> int:
     write_summary(
         out_dir / "summary.md", args, result.metadata, performance, trade_stats, summary, checks,
         decision, reason, len(engine.frames), rejections, trades_by_year,
+        b2_mode=b2_mode, b2_coverage=coverage_dict,
     )
     logger.info("结论: %s — %s", decision, reason)
     logger.info("报告目录: %s", out_dir)

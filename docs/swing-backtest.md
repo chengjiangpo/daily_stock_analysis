@@ -62,13 +62,64 @@ curl -X POST http://127.0.0.1:8000/api/v1/swing-backtest/runs \
 
 ```text
 BACKTEST_CACHE_DIR=./data/cache/swing_bars_full
+MARKET_CAPS_DATABASE_URL=postgresql://user:pass@host:5432/db
 ```
 
-未设置时默认使用仓库下 `data/cache/swing_bars_full`。
+未设置时行情缓存默认仓库下 `data/cache/swing_bars_full`；`MARKET_CAPS_DATABASE_URL`
+供 `scripts/fetch_market_caps.py` 导出市值缓存（密码等特殊字符需 percent-encode，
+如 `@` 写作 `%40`）。
 
-## 4. 已知限制
+## 4. B2 口径与市值缓存（V3.0 §4.4/§4.5）
+
+两套 B2 口径（`scripts/mvp_edge_check.py --b2 {auto,matched,legacy}`）：
+
+| 口径 | 定义 | 用途 |
+|---|---|---|
+| `legacy` | 同分位桶（20 日均额代理 size）随机抽 5 只 × 200 次取中位数 | 复现 MVP 冻结结果（run `mvp-20261026-233203`） |
+| `matched` | 同一信号日、同一流通市值分档（默认 <20/20–30/30–45/45–70/≥70 亿，`--size-edges` 可调）内**所有可买股票**的均值收益，对事件股票留一剔除；同日全池「市场口径」对照；对照股票套用与主策略一致的入场拦截（停牌/开盘涨停/跳空 ≤3%） | V3.0 起的标准口径，与 `fund-analysis` 事件研究统一；无抽样噪声、无需种子 |
+| `auto`（默认） | 有市值缓存时用 `matched`，否则回退 `legacy`（日志与 run_metadata 均记录实际口径） | — |
+
+分档参数在 `config/backtest.yaml` 的 `matched_control` 段；当日市值覆盖率
+< `min_coverage`（默认 0.9）时该日回退 20 日均额代理分位桶，并在报告披露。
+
+### 导出市值缓存
+
+数据源为 `fund-analysis` 库 `public.stock_eod_daily`（TuShare `daily_basic` +
+`stk_limit` + `adj_factor` 合成，含退市股；`circ_mv` 单位为元）。导出与抽样对账：
+
+```bash
+.venv/bin/python scripts/fetch_market_caps.py \
+  --start 2016-01-01 --end 2024-12-31 \
+  --cache-dir data/cache/market_caps \
+  --codes-file data/cache/swing_bars_full/universe_codes.txt \
+  --url "$MARKET_CAPS_DATABASE_URL" \
+  --cross-check --bars-cache data/cache/swing_bars_full
+```
+
+交叉校验结论（2026-10-28，主板 3328 只池、300 只抽样）：
+
+- **涨跌停价**：官方 `stk_limit` 与分段规则自算（Decimal ROUND_HALF_UP）1436 对比
+  **0 不匹配**（含核准制新股首日 +44%/−36% 与注册制前 5 日不设限哨兵值）；
+- **复权因子**：两源绝对水平不可比（TuShare 自上市日累积、BaoStock hfq 基准日不同，
+  每股恒定倍数差，121/122 只佐证）；有效口径为**除权日跳变一致性**，552 对比 1 超 0.5%；
+- 已知数据缺口：BaoStock hfq 对**配股类除权**存在漏调整（全量扫描 9 例，如 002466
+  2019-12-26 配股除权日 BaoStock 因子未跳变、TuShare 正确跳变 ×1.19，官方涨跌停价
+  佐证交易所确实重置了 pre_close）。涉及股票的 BaoStock hfq 信号序列在事件日有跳崖，
+  量级约 0.5% 股票 × 单日，不足以动摇 MVP STOP 结论；未来信号层可改用市值缓存的
+  `adj_factor` 重建复权序列（待 I-4 落库后实施）。
+
+## 5. 试验治理
+
+- 试验账本：`reports/experiments/ledger.csv`（V2.0 §5.5 字段 + repo/日期扩展），
+  两仓库累计试验预算 200 次；校验：`python scripts/check_experiment_budget.py`；
+- 负先验登记册（N1 箱体突破 / N2 冲高回落 / N3 趋势回调）见
+  `fund-analysis/docs/a-share-swing-backtest-v3-plan.md` §2.4；
+- 新假设登记与准入门槛见该方案 §3.2（先登记账本 → 事件研究筛选 → 确认段一次 → 前向预注册）。
+
+## 6. 已知限制
 
 - 信号级运行的净值按固定 6 万名义本金加总，仅用于账务校验；不以它为可投资组合收益。
 - 尚未建模现金分红入账与公司行为（阶段 3）；BaoStock 后复权已含分红，但持仓期现金分红未补记。
-- B2 的 size 口径为 20 日均额代理，行业为当前口径。
+- 市值缓存自 2017-05-26 起（stock_eod_daily 起点）；更早区间 B2 回退 20 日均额代理分位桶。
+- BaoStock hfq 的配股除权漏调整见上节；legacy 口径的 size 为 20 日均额代理、行业为当前口径。
 - 运行触发只使用缓存，不负责补数据。

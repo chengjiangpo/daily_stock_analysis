@@ -35,6 +35,13 @@ cost_tiers:
     commission_rate: 0.0005
     slippage_ticks: 3
 
+# B2 匹配对照修正口径（V3.0 §4.4，与 fund-analysis event-study 统一）：
+# 同一信号日、同一流通市值分档内「所有可买股票」的平均收益，对事件股票留一剔除。
+matched_control:
+  size_edges_yi: [20, 30, 45, 70]   # 流通市值分档边界（亿元），<20 / 20-30 / 30-45 / 45-70 / >=70
+  min_coverage: 0.90                # 当日 circ_mv 覆盖率低于该值时，该日回退为 20 日均额代理的分位桶
+  entry_gap_max: 0.03               # 对照股票 T+1 开盘跳空上限（与主策略入场拦截一致）
+
 # 主策略 v1 冻结参数（方案附录 A）
 strategies:
   trend_pullback_restart:

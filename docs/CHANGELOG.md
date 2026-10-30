@@ -11,11 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 新功能
 
+- 🧪 **试验账本与预算治理（V3.0 §3.2/I-3）** — 新增 `reports/experiments/ledger.csv`（V2.0 §5.5 字段 + repo/日期扩展，两仓库共享 200 次试验预算）与校验脚本 `scripts/check_experiment_budget.py`（超预算退出码 1）；已把负先验 N1（箱体突破）、N2（冲高回落）、N3（趋势回调 MVP 主口径 + 诊断口径）计入账本；`reports/experiments/README.md` 说明登记规则与负先验登记册入口。
+- 📊 **B2 匹配基准修正口径（V3.0 §4.4）** — `scripts/mvp_edge_check.py` 新增 `--b2 {auto,matched,legacy}`：`matched` 为同日同流通市值分档（默认 <20/20–30/30–45/45–70/≥70 亿，`--size-edges` 可调）内所有可买股票的均值收益 + 留一剔除，并输出同日全池「市场口径」对照，与 `fund-analysis` 事件研究口径统一（无抽样噪声）；`legacy` 保持 MVP 冻结口径可复现；`auto`（默认）有市值缓存时用 `matched`。分档参数见 `config/backtest.yaml` 的 `matched_control` 段，报告与 `run_metadata.json` 记录实际口径与市值覆盖率。
+- 💾 **市值/涨跌停价截面缓存（V3.0 §4.5/I-2+I-5）** — 新增 `scripts/fetch_market_caps.py`（从 fund-analysis 库 `stock_eod_daily` 导出 `data/cache/market_caps/`）与 `src/data/market_caps.py`；内置抽样交叉校验：官方 `stk_limit` 与分段规则自算价 1436 对比 0 不匹配（含新股首日 +44%/−36% 与注册制前 5 日不设限哨兵）；复权因子按除权日跳变一致性对账（两源绝对水平因累积基准日不同不可比），并发现 BaoStock hfq 对配股类除权存在漏调整（全量 9 例，详见 `docs/swing-backtest.md`）。
 - 📈 **A 股短线波段选股与组合级回测骨架** — 新增 `src/strategy/`、`src/sim/`、`src/validation/`、`src/data/` 与两个 CLI：`scripts/mvp_edge_check.py`（阶段 0 毛超额 go/no-go）和 `scripts/run_backtest.py`（组合回测 / 滚动前推）。规则与费用按日期分段（`config/*.yaml`），撮合用 Decimal 处理涨跌停价，T+1 开盘执行且卖出资金不用于同日买入；数据侧支持 BaoStock 原始+后复权、历史时点股票池、质量校验与快照哈希。方案与任务拆分见 `docs/plans/a-share-swing-backtest-plan.md` 与 `docs/plans/a-share-swing-backtest-execution.md`。
 - 🖥️ **波段回测 Web 页面与 API** — 新增 `/swing-backtest` 页面与 `/api/v1/swing-backtest` 接口：列出 `reports/backtest/*` 与 `reports/mvp` 运行、查看 go/no-go 判定/净值/交易/诊断/拒单、下载报告文件，并支持基于本地缓存异步触发回测（串行、最多 800 只）。使用说明见 `docs/swing-backtest.md`。
 
 ### 修复
 
+- 💴 **过户费历史段修正（V3.0 errata E1）** — `config/fees.yaml` 2015-08-01～2022-04-28 段由「仅沪市 0.002%」修正为「沪深均 0.002% 双向」（2015-08-01 起沪深统一；原口径漏收深市过户费），对应单测断言同步修正。
+- 📜 **盘后固定价与新股申报区间完备性配置（V3.0 errata E2/E3）** — `config/market_rules.yaml` 补记盘后固定价格交易段（2026-07-06 沪深全 A 股 15:05–15:30 收盘价撮合；北交所已自行推出）与主板核准制新股首日申报区间精确化（集合竞价 ±20%、连续竞价 +44%/−36%，2013-12-13 起），均不影响现行撮合语义。
 - 📦 **恢复 LiteLLM 官方 PyPI 安装并锁定安全上限** — `requirements.txt` 重新使用 `pip install litellm` 的官方 PyPI 安装路径，并在保留历史最低要求 `>=1.80.10` 的同时增加 `<1.82.7` 的安全上限，避免误装已被移除的 `1.82.7` / `1.82.8` 风险版本；Windows 桌面打包脚本也同步回退到标准 `pip install -r requirements.txt` 链路，减少特殊下载分支带来的维护成本。
 - 📨 **Telegram Markdown 解析失败回退纯文本**（fixes #850）— `src/notification_sender/telegram_sender.py` 现在会在 Telegram 返回 `HTTP 400` 且包含 `can't parse entities` / Markdown 解析错误时，自动去掉 `parse_mode` 后重试纯文本发送，避免 `*ST` 等正文内容直接导致整条通知失败。
 - 🔢 **A 股同码实时行情保留交易所提示**（fixes #852）— `DataFetcherManager` 与 `TushareFetcher` 现在会保留 `SZ000001` / `000001.SZ` 这类显式沪深提示，旧版 Tushare 实时行情降级分支不再把深市 `000001` 误判成 `sh000001` 上证指数。

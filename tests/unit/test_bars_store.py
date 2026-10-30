@@ -171,3 +171,34 @@ def test_loader_prefers_db_when_bars_url_given(cache_dir: Path, db_url: str) -> 
     frames = load_frames("2024-01-01", "2024-12-31", cache_dir=str(cache_dir), bars_url=db_url)
     assert set(frames) == {"000001", "300750", "600000"}
     assert len(frames["000001"]) == 5
+
+
+def test_adj_source_tushare_prefers_aligned_factor(cache_dir: Path, db_url: str) -> None:
+    """重建因子优先：adj_factor_aligned 存在时用于 hfq_close=close*aligned。"""
+    from sqlalchemy import update
+
+    from src.data.bars_store import Session, SwingBarDaily, make_engine
+
+    ingest_cache(cache_dir, url=db_url)
+    engine = make_engine(db_url)
+    with Session(engine) as session:
+        # 人为把 2024-01-02 那天的因子放大 1.2 倍，模拟「重建后修正」
+        session.execute(
+            update(SwingBarDaily)
+            .where(SwingBarDaily.code == "000001", SwingBarDaily.trade_date == pd.Timestamp("2024-01-02").date())
+            .values(adj_factor_aligned=9.9 * 1.2, adj_factor_ts=1.0)
+        )
+        session.commit()
+
+    base = load_frames_from_db(db_url, codes=["000001"])
+    rebuilt = load_frames_from_db(db_url, codes=["000001"], adj_source="tushare")
+    assert base["000001"]["adj_factor"].iloc[0] == pytest.approx(9.9)
+    assert rebuilt["000001"]["adj_factor"].iloc[0] == pytest.approx(9.9 * 1.2)
+    assert rebuilt["000001"]["hfq_close"].iloc[0] == pytest.approx(rebuilt["000001"]["close"].iloc[0] * 9.9 * 1.2)
+    # 未回填的行回退原始因子
+    assert rebuilt["000001"]["adj_factor"].iloc[1] == pytest.approx(9.9)
+
+
+def test_adj_source_rejects_unknown(cache_dir: Path, db_url: str) -> None:
+    with pytest.raises(ValueError):
+        load_frames_from_db(db_url, adj_source="wind")

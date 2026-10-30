@@ -82,6 +82,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="数据库 schema（PostgreSQL 推荐独立 schema，如 swing_bars）；可用环境变量 SWING_BARS_SCHEMA",
     )
+    parser.add_argument(
+        "--adj-source",
+        default="baostock",
+        choices=("baostock", "tushare"),
+        help="复权因子来源（仅从库读时生效）：baostock=原始 hfq；tushare=重建后的 adj_factor_aligned",
+    )
     parser.add_argument("--codes-file", default=None, help="每行一个 6 位代码")
     parser.add_argument("--limit-codes", type=int, default=0)
     parser.add_argument("--refresh", action="store_true")
@@ -407,6 +413,7 @@ def main() -> int:
             refresh=args.refresh,
             bars_url=args.bars_url,
             bars_schema=args.bars_schema,
+            adj_source=args.adj_source,
         )
     if not frames:
         logger.error("没有可用行情数据")

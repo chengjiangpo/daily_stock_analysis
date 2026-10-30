@@ -175,3 +175,45 @@ SWING_BARS_SCHEMA=swing_bars
 经 `mask_url()` 掩掉密码；裸 `postgres://` 会自动改写为 `postgresql+psycopg2://`。
 落库命令：`SWING_BARS_DATABASE_URL=... SWING_BARS_SCHEMA=swing_bars python scripts/ingest_swing_bars.py
 --cache-dir data/cache/swing_bars_full`（幂等，重跑会全部跳过）。
+
+## 8. 复权因子重建（I-4 后续）
+
+BaoStock hfq 在部分除权点上与交易所不一致（配股类漏调整、错日生效，甚至与公司行为无关的
+纯数据错误）。`scripts/rebuild_adj_factor.py` 用同库 `public.stock_eod_daily.adj_factor`
+按**锚点对齐**重建因子，原始列不动、可追溯：
+
+```text
+aligned(t) = ts_factor(t) / ts_factor(anchor) * bao_factor(anchor)
+anchor     = 该股票两源都有数据的第一天（stock_eod_daily 自 2017-05-26 起）
+```
+
+```bash
+# 回填（幂等；写入 adj_factor_ts / adj_factor_aligned / adj_rebuilt_at）
+SWING_BARS_DATABASE_URL=... SWING_BARS_SCHEMA=swing_bars \
+.venv/bin/python scripts/rebuild_adj_factor.py --report reports/adj_factor_rebuild.json
+
+# 用重建因子跑回测（仅从库读时生效）
+.venv/bin/python scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 \
+  --bars-url "$SWING_BARS_DATABASE_URL" --bars-schema swing_bars \
+  --adj-source tushare --b2 legacy --out reports/mvp_reproduction/run-legacy-pg-adjts
+```
+
+实测（2026-10-30）：锚点覆盖 3326/3328 只、5,473,997 行带 TuShare 因子；实质修正
+（相对偏离 >0.5%）**18,107 行 / 27 只**，单日因子比例跳变 >2% 的事件 **37 个**。典型：
+
+| 日期 | 代码 | 跳变 | 性质 |
+|---|---|---|---|
+| 2019-12-26 | 002466 | +18.85% | 配股除权（BaoStock 迟到 2020-01-02 才生效） |
+| 2020-12-31 | 000001 | +20.22% | BaoStock 纯数据错误：原始价连续却 hfq 从 2303.2 掉到 1929.9 |
+| 2019-06-06 | 001914 | -83.96% | 持续水平偏移（影响 1820 行） |
+| 2018-12-26 | 001872 | -71.64% | 持续水平偏移（影响 1642 行） |
+| 2024-03-27 | 002492 | +228.39% | 单次巨大偏移（影响 187 行） |
+
+**对 v1 的影响（受控对照，只换因子源）**：交易 1511→1507，毛超额 -0.198%→-0.194%，
+CI [-0.483%,+0.111%]→[-0.482%,+0.119%]，净期望 -0.680%→-0.697%，判定仍为 **STOP**。
+即 STOP 结论不依赖复权源（详见 `docs/plans/a-share-swing-backtest-execution.md` §16，
+账本登记 `N3-mvp-adjts-recheck`）。
+
+边界：①2016-01-01~2017-05-25 无 TuShare 覆盖，该段仍用 BaoStock 因子，异常无法检测；
+②只修正跳变一致性，不重算分红现金入账；③默认读源仍是 `baostock`（保持与 I-1 复现基线
+可比），新阶段研究建议默认 `tushare`。

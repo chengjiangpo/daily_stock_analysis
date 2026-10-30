@@ -50,6 +50,7 @@ def load_frames(
     refresh: bool = False,
     bars_url: Optional[str] = None,
     bars_schema: Optional[str] = None,
+    adj_source: str = "baostock",
     progress_every: int = 20,
 ) -> Dict[str, pd.DataFrame]:
     if data_dir:
@@ -73,6 +74,7 @@ def load_frames(
             codes=codes,
             limit_codes=limit_codes,
             schema=bars_schema,
+            adj_source=adj_source,
         )
         logger.info("载入 %d 只股票（数据库）", len(frames))
         industry_file = cache_root / "industry.json" if cache_root is not None else None

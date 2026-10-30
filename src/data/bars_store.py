@@ -75,6 +75,11 @@ class SwingBarDaily(Base):
     hfq_close: Mapped[Optional[float]] = mapped_column(Float)
     adj_factor: Mapped[Optional[float]] = mapped_column(Float)
     adjustflag: Mapped[Optional[int]] = mapped_column(Integer)
+    # 复权因子重建（I-4 后续）：原始 adj_factor 保持不变，下面三列由
+    # scripts/rebuild_adj_factor.py 从 public.stock_eod_daily 回填。
+    adj_factor_ts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    adj_factor_aligned: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    adj_rebuilt_at: Mapped[Optional[object]] = mapped_column(DateTime(timezone=False), nullable=True)
 
     __table_args__ = (
         Index("ix_swing_bars_daily_date", "trade_date"),
@@ -463,6 +468,40 @@ def table_counts(url: Optional[str] = None, schema: Optional[str] = None) -> dic
         return {"bars": int(bars), "codes": int(metas)}
 
 
+ADJ_SOURCES = ("baostock", "tushare")
+
+# 读路径公共列（复权相关列按 adj_source 动态拼）
+_READ_BASE_COLUMNS = (
+    "code",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "volume",
+    "amount",
+    "turn",
+    "pct_chg",
+    "tradestatus",
+    "is_st",
+    "adjustflag",
+)
+
+
+def _read_columns(adj_source: str):
+    """按复权口径拼列：baostock=原始 hfq；tushare=重建因子优先、缺失时回退。"""
+    columns = [getattr(SwingBarDaily, name) for name in _READ_BASE_COLUMNS]
+    if adj_source == "tushare":
+        factor = func.coalesce(SwingBarDaily.adj_factor_aligned, SwingBarDaily.adj_factor)
+        columns.append(factor.label("adj_factor"))
+        columns.append((SwingBarDaily.close * factor).label("hfq_close"))
+    else:
+        columns.append(SwingBarDaily.adj_factor)
+        columns.append(SwingBarDaily.hfq_close)
+    return columns
+
+
 def load_frames_from_db(
     url: Optional[str] = None,
     start: Optional[str] = None,
@@ -470,11 +509,20 @@ def load_frames_from_db(
     codes: Optional[Iterable[str]] = None,
     limit_codes: int = 0,
     schema: Optional[str] = None,
+    adj_source: str = "baostock",
 ) -> Dict[str, pd.DataFrame]:
-    """从库读回行情，输出与 CSV 缓存同构的 ``Dict[code, DataFrame]``（索引 date）。"""
+    """从库读回行情，输出与 CSV 缓存同构的 ``Dict[code, DataFrame]``（索引 date）。
+
+    `adj_source`：
+    - `baostock`（默认）：原始 BaoStock hfq 因子与 `hfq_close`，与 CSV 缓存路径逐字节等价；
+    - `tushare`：用 `scripts/rebuild_adj_factor.py` 回填的 `adj_factor_aligned`（缺失时回退
+      原因子），并按 `close * factor` 重算 `hfq_close`；用于修复配股类除权漏调整。
+    """
+    if adj_source not in ADJ_SOURCES:
+        raise ValueError(f"adj_source 只能是 {ADJ_SOURCES}，收到 {adj_source!r}")
     engine = make_engine(url, schema)
     ensure_schema(engine)
-    statement = select(SwingBarDaily)
+    statement = select(*_read_columns(adj_source))
     if start:
         statement = statement.where(SwingBarDaily.trade_date >= pd.Timestamp(start).date())
     if end:

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 新功能
 
+- 🗄️ **行情落库（V3.0 §5.2/I-4）** — 新增 `src/data/bars_store.py`、`scripts/ingest_swing_bars.py` 与 `tests/unit/test_bars_store.py`：把 `data/cache/swing_bars_full` 的 BaoStock 日线装入关系库（表 `swing_bars_daily` 主键 `(code, trade_date)`，`swing_bars_fetch_meta` 作抓取溯源），后端无关（默认 `sqlite:///data/swing_bars.db`，`SWING_BARS_DATABASE_URL` 可指向 PostgreSQL）；写入幂等（同 `fetched_at`+`rows` 跳过、`--refresh` 覆盖、按 code 先删后插以收敛重抓变短的历史）；SQLite 批量写固定 WAL/`cache_size=256MB` 并把二级索引改为「落库前删、写完后建」（修复 1GB+ 表尾部写入 10 倍级退化）；`mvp_edge_check.py --bars-url` 可直接从库读回，回测代码零改动。已全量落库 **6,371,456 行 / 3328 只**（1.07GB，`quick_check` ok），从库读回全窗口重跑 1511 笔与原 CSV 路径 `trades.csv`/`performance_metrics.json`/`signals.csv` **逐字节一致**。
 - 🧪 **试验账本与预算治理（V3.0 §3.2/I-3）** — 新增 `reports/experiments/ledger.csv`（V2.0 §5.5 字段 + repo/日期扩展，两仓库共享 200 次试验预算）与校验脚本 `scripts/check_experiment_budget.py`（超预算退出码 1）；已把负先验 N1（箱体突破）、N2（冲高回落）、N3（趋势回调 MVP 主口径 + 诊断口径）计入账本；`reports/experiments/README.md` 说明登记规则与负先验登记册入口。
 - 📊 **B2 匹配基准修正口径（V3.0 §4.4）** — `scripts/mvp_edge_check.py` 新增 `--b2 {auto,matched,legacy}`：`matched` 为同日同流通市值分档（默认 <20/20–30/30–45/45–70/≥70 亿，`--size-edges` 可调）内所有可买股票的均值收益 + 留一剔除，并输出同日全池「市场口径」对照，与 `fund-analysis` 事件研究口径统一（无抽样噪声）；`legacy` 保持 MVP 冻结口径可复现；`auto`（默认）有市值缓存时用 `matched`。分档参数见 `config/backtest.yaml` 的 `matched_control` 段，报告与 `run_metadata.json` 记录实际口径与市值覆盖率。
 - 💾 **市值/涨跌停价截面缓存（V3.0 §4.5/I-2+I-5）** — 新增 `scripts/fetch_market_caps.py`（从 fund-analysis 库 `stock_eod_daily` 导出 `data/cache/market_caps/`）与 `src/data/market_caps.py`；内置抽样交叉校验：官方 `stk_limit` 与分段规则自算价 1436 对比 0 不匹配（含新股首日 +44%/−36% 与注册制前 5 日不设限哨兵）；复权因子按除权日跳变一致性对账（两源绝对水平因累积基准日不同不可比），并发现 BaoStock hfq 对配股类除权存在漏调整（全量 9 例，详见 `docs/swing-backtest.md`）。
@@ -26,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 🔢 **A 股同码实时行情保留交易所提示**（fixes #852）— `DataFetcherManager` 与 `TushareFetcher` 现在会保留 `SZ000001` / `000001.SZ` 这类显式沪深提示，旧版 Tushare 实时行情降级分支不再把深市 `000001` 误判成 `sh000001` 上证指数。
 - 🎯 **多 Agent 次优买点不再盲目复制理想买点**（fixes #851）— 当多智能体结果缺少独立 `secondary_buy` 时，仪表盘现在优先展示 `N/A` 而不是把 fallback 值硬拷贝成与 `ideal_buy` 完全相同，减少误导性的双买点展示。
 - 🧩 **Tushare 初始化不再强依赖本地 SDK 包** — `TushareFetcher` 现在直接使用内置 HTTP client 访问 Tushare Pro，不再在启动阶段先 `import tushare` 才能初始化；修复了 Docker、桌面打包或环境重建后因缺少 `tushare` 包而提前报 `No module named 'tushare'` 的问题，并补充对应回归测试。
+
+### 测试
+
+- ✅ **MVP STOP 可复现（V3.0 §5.2/I-1）** — 补齐缓存最后 85 只（6004xx 段）至 3328/3328 后，用冻结口径 `--b2 legacy` 全窗口重跑 2016–2024：1511 笔、毛超额 -0.20%、CI [-0.48%, +0.11%]、净期望 -0.68%、退出分布 1129/263/79/40 与已发布 `mvp-20261026-233203` **完全一致**（仅胜率 +0.03pp / PF +0.39pp 舍入差），`verify_mvp_reproduction.py` 判级 **MATCH**（run `mvp-20261030-133041` @ `07b2bad`）。复现记录见 `docs/plans/a-share-swing-backtest-execution.md` §14。
 
 ## [3.10.1] - 2026-03-24
 

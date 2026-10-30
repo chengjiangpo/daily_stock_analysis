@@ -293,3 +293,124 @@ curl http://127.0.0.1:8000/api/v1/swing-backtest/runs/mvp
 4. 组合约束版（5 仓/2 笔/日/熔断）单独跑出 834 笔、总收益 -33.2%、最大回撤 40.4%，用于识别执行与风控问题，不作为 MVP 判据。
 5. 数据质量：3321/3328 只通过 §4.5 可自动判定项；7 只隔离候选（5 只复权因子单调性、2 只 OHLC/量额），仅涉及 2 笔交易，未改变结论。
 6. 复现命令：`.venv/bin/python scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 --cache-dir data/cache/swing_bars_full --out reports/mvp`。
+
+---
+
+## 14. I-1 MVP 复现验证（2026-10-30）
+
+### 14.1 目的与口径
+
+按 V3.0 方案 §5.2 的 I-1，验证 §13 的 STOP 结论能否在当前 HEAD 与重建后的数据缓存上复现，
+排除「结论依赖一次性环境或一次性缓存」的可能。
+
+- **必须是 MVP 冻结口径**：`--b2 legacy`（同日 20 日均额代理分位桶 + 同波动分位 + 行业，
+  随机 5 只 ×200 次取中位数）。用 `--b2 auto` 时市值缓存存在会自动切到 `matched`，
+  差异来自口径切换而非漂移，**不能作为复现判据**。
+- 数据：BaoStock 2016-01-04～2024-12-31，主板 3328 只（含窗口内退市股），缓存补至 3328/3328。
+- 基线：§13.2 与试验账本 `N3-mvp-signal-level`（run_id `mvp-20261026-233203`）。
+
+### 14.2 执行记录
+
+| 步骤 | 命令要点 | 实测 |
+|---|---|---|
+| 补抓缺失 85 只（全为 6004xx 段，上轮会话中断遗留） | `scripts/fetch_swing_bars.py --codes-file data/cache/swing_bars_full/missing_codes_now.txt --start 2016-01-01 --end 2024-12-31 --cache-dir data/cache/swing_bars_full` | 85/85 有数据，**6m53s**（≈12 只/分钟，单会话；并发会触发限流） |
+| 全窗口复现 | `scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 --cache-dir data/cache/swing_bars_full --b2 legacy --out reports/mvp_reproduction/run-legacy` | **7m31s**，3328 只 / 2187 交易日 / 1511 笔 |
+| 比对判级 | `scripts/verify_mvp_reproduction.py --run-dir reports/mvp_reproduction/run-legacy` | **MATCH** |
+
+复现 run_id `mvp-20261030-133041` @ commit `07b2bad`。
+
+### 14.3 比对结果
+
+| 指标 | 已发布（§13.2） | 复现 | 差值 | 容差内 |
+|---|---|---|---|---|
+| 交易笔数 | 1511 | 1511 | 0 | 是 |
+| 每笔毛收益 | -0.52% | -0.52% | -0.00pp | 是 |
+| B2 基准 | -0.32% | -0.32% | -0.00pp | 是 |
+| 每笔毛超额 | -0.20% | -0.20% | +0.00pp | 是 |
+| bootstrap 95% CI | [-0.48%, +0.11%] | [-0.48%, +0.11%] | 0 | 是 |
+| 扣基础成本净期望 | -0.68% | -0.68% | -0.00pp | 是 |
+| 胜率 | 28.30% | 28.33% | +0.03pp | 是 |
+| PF | 0.73 | 0.73 | +0.39pp | 是 |
+| 退出分布 | 1129/263/79/40 | 1129/263/79/40 | 0 | 是 |
+
+### 14.4 结论
+
+**MATCH**：STOP 结论与全部关键数字可复现，仅胜率/PF 存在千分位舍入级差异。§13 的证伪
+不是单次环境或缓存偶然所致，冻结 v1 的负结论成立。
+
+### 14.5 留痕与边界
+
+1. 复现产物在 `reports/mvp_reproduction/run-legacy/`（gitignored，8.3MB），`comparison.json`
+   由 `verify_mvp_reproduction.py` 重生成；长期留痕以本节数字 + run_id + commit 为准。
+2. 2026-10-28 曾产出一次 `DRIFT` 比对，**作废**：那次只跑 2023 单年、1106 只、37 笔，
+   样本口径与发布结论不同，不构成漂移证据。
+3. 数据完整性核对：161 只在窗口内提前结束（退市，正常），78 只行数 <500（2023 年后
+   上市新股），无缺失代码（3328/3328）。
+4. **本复现不计入试验账本**（复现验证 ≠ 新假设）；若要用 `matched` 口径重跑同一冻结规则
+   做对照检验，属新试验，须先登记 `reports/experiments/ledger.csv` 再跑。
+5. 行情仍在文件缓存（`data/` 被 gitignore），**未落库**；SQLAlchemy 落库见 §15（I-4）。
+
+---
+
+## 15. I-4 行情落库（SQLAlchemy）
+
+阶段 0 的已知限制第 6 条「未落库」在本阶段收口：把 `data/cache/swing_bars_full` 的
+BaoStock 日线装入关系库，使回测不再依赖单一机器上的 CSV 缓存。
+
+### 15.1 设计
+
+| 表 | 主键 | 说明 |
+|---|---|---|
+| `swing_bars_daily` | `(code, trade_date)` | 不复权真实价 OHLC + `pre_close`/`volume`/`amount`/`turn`/`pct_chg`/`tradestatus`/`is_st`，后复权 `hfq_close` 与 `adj_factor`（信号层用），`adjustflag` 保留原始抓取口径 |
+| `swing_bars_fetch_meta` | `code` | 抓取溯源：`requested_start/end`、`first_date`、`last_date`、`rows`、`fetched_at`，用于判断缓存是否覆盖请求窗口（等价于原 `meta/*.json`） |
+
+- 后端无关：默认 `sqlite:///data/swing_bars.db`，生产建议 PostgreSQL（与 `fund-analysis`
+  的 `stock_eod_daily` 同库便于对账）；URL 由 `SWING_BARS_DATABASE_URL` 或 `--url` 指定。
+- 幂等写入：按主键 `ON CONFLICT DO UPDATE`（PostgreSQL / SQLite ≥3.24 均支持）；
+  同一 `fetched_at` 的代码默认跳过，`--refresh` 强制重写。
+- 读路径：`load_frames(..., bars_url=...)` 与 `mvp_edge_check.py --bars-url`，
+  输出与 CSV 缓存同构的 `Dict[code, DataFrame]`，回测代码零改动。
+
+### 15.2 命令
+
+```bash
+# 落库（默认 sqlite：data/swing_bars.db；可用 --url 指向 PostgreSQL）
+.venv/bin/python scripts/ingest_swing_bars.py \
+  --cache-dir data/cache/swing_bars_full --url "$SWING_BARS_DATABASE_URL"
+
+# 只落 50 只做冒烟 / 只看规模不写库
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --limit-codes 50 --dry-run
+
+# 从库读回跑回测（不再依赖 CSV 缓存目录）
+.venv/bin/python scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 \
+  --bars-url "$SWING_BARS_DATABASE_URL" --b2 legacy --out reports/mvp_reproduction/run-legacy-db
+```
+
+### 15.3 执行结果（2026-10-30）
+
+| 项 | 结果 |
+|---|---|
+| 全量落库 | **6,371,456 行 / 3328 只**（与 CSV 缓存行数完全相等），`swing_bars_fetch_meta` 3328 行 |
+| 目标库 | 本地 `sqlite:///data/swing_bars.db`，**1.07GB**（`quick_check` = ok） |
+| 从库读回等价性 | `--bars-url` 全窗口重跑：1511 笔、`final_equity` 99,363,299.99，与 CSV 路径的 `trades.csv` / `performance_metrics.json` / `signals.csv` **逐字节相同**；`verify_mvp_reproduction` 再判 **MATCH**（run `mvp-20261030-150913`） |
+
+落库实测与优化（重要，已并入代码）：
+
+1. 首轮全量落库在尾部出现 **10 倍级退化**（50 只/24s → 50 只/>16min）。原因为 SQLite 默认
+   page cache 仅 2MB，在 1GB+ 表上按主键随机插页造成抖动，叠加大表上逐行维护非聚簇索引。
+2. 修正：SQLite 连接固定 `journal_mode=WAL` / `synchronous=NORMAL` / `cache_size=256MB` /
+   `temp_store=MEMORY`；二级索引改为「落库前删、写完后建」；删除与主键重复的
+   `ix_swing_bars_daily_code_date`。
+3. 中断可续：写入幂等（同 `fetched_at`+`rows` 跳过），实测用 `--codes-file` 只补最后 78 只
+   **15s** 完成（6.29M 行已就位时），无需全量重扫。
+4. 环境提醒：本轮 macOS swap 已用 7.97G（`mediaanalysisd` 占 300%+ CPU）时，任何
+   读 6.37M 行的任务都会明显变慢（从库读回 9m05s vs CSV 2m08s 的直接差异主要来自此）；
+   性能比较必须在机器不 swap 时做。
+
+### 15.4 待办
+
+- **生产库目标待定**：本地已可用 sqlite；若要与 `fund-analysis` 的 `stock_eod_daily` 同库
+  对账，需指定 PostgreSQL 实例（建议单独 database 或 schema，避免与现有业务表混住），
+  然后用同一个 `scripts/ingest_swing_bars.py --url ... --refresh` 重跑（幂等，可重复执行）。
+- 入库后的 `adj_factor` 仍来自 BaoStock hfq，配股除权漏调整（§14 数据事实 2）需按
+  除权日跳变口径重建，优先级低于 PG 选型。

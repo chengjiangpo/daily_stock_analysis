@@ -48,12 +48,44 @@ def load_frames(
     codes_file: Optional[str] = None,
     limit_codes: int = 0,
     refresh: bool = False,
+    bars_url: Optional[str] = None,
     progress_every: int = 20,
 ) -> Dict[str, pd.DataFrame]:
     if data_dir:
         return load_local_frames(data_dir)
 
     cache_root = Path(cache_dir) if cache_dir else None
+    codes: Optional[list[str]] = None
+    if bars_url:
+        # I-4：从库读回，输出与 CSV 缓存同构；行业仍从缓存目录补（可缺）
+        from .bars_store import load_frames_from_db
+
+        if codes_file:
+            codes = [
+                line.strip() for line in Path(codes_file).read_text(encoding="utf-8").splitlines() if line.strip()
+            ]
+        logger.info("从数据库装载行情（%s）", bars_url)
+        frames = load_frames_from_db(
+            url=bars_url,
+            start=start,
+            end=end,
+            codes=codes,
+            limit_codes=limit_codes,
+        )
+        logger.info("载入 %d 只股票（数据库）", len(frames))
+        industry_file = cache_root / "industry.json" if cache_root is not None else None
+        if industry_file is not None and industry_file.exists():
+            # 只读本地行业缓存，不从库读路径触发网络登录
+            try:
+                industry_map = fetch_industry_map(cache_root, refresh=False)
+            except Exception as error:  # noqa: BLE001 - 行业缺失不阻塞回测
+                logger.warning("行业映射获取失败，B2 将退化为全池抽样: %s", error)
+                industry_map = {}
+            if industry_map:
+                for code, frame in frames.items():
+                    frame["industry"] = industry_map.get(code, "UNKNOWN")
+        return frames
+
     if codes_file:
         codes = [line.strip() for line in Path(codes_file).read_text(encoding="utf-8").splitlines() if line.strip()]
     else:

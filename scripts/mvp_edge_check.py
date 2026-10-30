@@ -71,6 +71,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", default="reports/mvp")
     parser.add_argument("--data-dir", default=None, help="本地行情目录（CSV/CSV.GZ）")
     parser.add_argument("--cache-dir", default="data/cache/swing_bars")
+    parser.add_argument(
+        "--bars-url",
+        default=None,
+        help="从数据库读行情（V3.0 I-4，如 sqlite:///data/swing_bars.db 或 postgresql://...）；"
+        "默认读 CSV 缓存。可用环境变量 SWING_BARS_DATABASE_URL",
+    )
     parser.add_argument("--codes-file", default=None, help="每行一个 6 位代码")
     parser.add_argument("--limit-codes", type=int, default=0)
     parser.add_argument("--refresh", action="store_true")
@@ -394,6 +400,7 @@ def main() -> int:
             codes_file=args.codes_file,
             limit_codes=args.limit_codes,
             refresh=args.refresh,
+            bars_url=args.bars_url,
         )
     if not frames:
         logger.error("没有可用行情数据")

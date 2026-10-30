@@ -63,11 +63,13 @@ curl -X POST http://127.0.0.1:8000/api/v1/swing-backtest/runs \
 ```text
 BACKTEST_CACHE_DIR=./data/cache/swing_bars_full
 MARKET_CAPS_DATABASE_URL=postgresql://user:pass@host:5432/db
+SWING_BARS_DATABASE_URL=postgresql://user:pass@host:5432/db
 ```
 
 未设置时行情缓存默认仓库下 `data/cache/swing_bars_full`；`MARKET_CAPS_DATABASE_URL`
 供 `scripts/fetch_market_caps.py` 导出市值缓存（密码等特殊字符需 percent-encode，
-如 `@` 写作 `%40`）。
+如 `@` 写作 `%40`）。`SWING_BARS_DATABASE_URL` 供 `scripts/ingest_swing_bars.py`
+落库与 `mvp_edge_check.py --bars-url` 读回（不设则默认 `sqlite:///data/swing_bars.db`）。
 
 ## 4. B2 口径与市值缓存（V3.0 §4.4/§4.5）
 
@@ -123,3 +125,44 @@ MARKET_CAPS_DATABASE_URL=postgresql://user:pass@host:5432/db
 - 市值缓存自 2017-05-26 起（stock_eod_daily 起点）；更早区间 B2 回退 20 日均额代理分位桶。
 - BaoStock hfq 的配股除权漏调整见上节；legacy 口径的 size 为 20 日均额代理、行业为当前口径。
 - 运行触发只使用缓存，不负责补数据。
+- 行情全量入库目前落在本地 sqlite（`data/swing_bars.db`），生产 PostgreSQL 实例待定；
+  入库后的 `adj_factor` 仍来自 BaoStock hfq，配股除权漏调整问题需按 §4 的交叉校验口径另行重建。
+
+## 7. 行情落库（V3.0 I-4）
+
+行情不再只依赖单机 CSV 缓存：`scripts/ingest_swing_bars.py` 把
+`data/cache/swing_bars_full` 装入关系库，`mvp_edge_check.py --bars-url` 可直接从库读回，
+输出与 CSV 缓存同构（已验证 trades/绩效逐字节一致）。
+
+| 表 | 主键 | 内容 |
+|---|---|---|
+| `swing_bars_daily` | `(code, trade_date)` | 不复权 OHLC + pre_close/volume/amount/turn/pct_chg/tradestatus/is_st；后复权 `hfq_close` 与 `adj_factor`（信号层用）；`adjustflag` 保留抓取口径 |
+| `swing_bars_fetch_meta` | `code` | 抓取溯源：requested_start/end、first_date、last_date、rows、fetched_at、ingested_at |
+
+```bash
+# 落库（默认 sqlite:///data/swing_bars.db；生产用 --url 指向 PostgreSQL）
+.venv/bin/python scripts/ingest_swing_bars.py \
+  --cache-dir data/cache/swing_bars_full --url "$SWING_BARS_DATABASE_URL"
+
+# 只看规模 / 小样本冒烟
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --dry-run
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --limit-codes 50
+
+# 从库读回跑回测
+.venv/bin/python scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 \
+  --bars-url "$SWING_BARS_DATABASE_URL" --b2 legacy --out reports/mvp_reproduction/run-legacy-db
+```
+
+语义说明：
+
+- **幂等**：同一 `fetched_at` + `rows` 的代码默认跳过；`--refresh` 强制重写；
+- **重抓收敛**：写入前按 code 清除旧行，「重抓后历史变短」不会残留旧数据；
+- **窗口校验**：缓存的 `requested_start/end` 不覆盖请求区间时判为无数据（与 CSV 读路径一致）；
+- **从库读**只补本地 `industry.json`（存在时），不会触发网络登录；
+- **SQLite 批量写优化**：连接固定 `WAL`/`synchronous=NORMAL`/`cache_size=256MB`；
+  二级索引「落库前删、写完后建」（大表逐行维护非聚簇索引是尾部退化的主因）；
+- 单测：`tests/unit/test_bars_store.py`（幂等、重抓收敛、窗口过滤、读回同构）。
+
+已验证（2026-10-30）：全量 **6,371,456 行 / 3328 只**入本地 sqlite（1.07GB，`quick_check` ok）；
+从库读回全窗口重跑 1511 笔，`trades.csv`/`performance_metrics.json`/`signals.csv` 与 CSV
+路径**逐字节相同**，`verify_mvp_reproduction` 判 **MATCH**。

@@ -64,12 +64,14 @@ curl -X POST http://127.0.0.1:8000/api/v1/swing-backtest/runs \
 BACKTEST_CACHE_DIR=./data/cache/swing_bars_full
 MARKET_CAPS_DATABASE_URL=postgresql://user:pass@host:5432/db
 SWING_BARS_DATABASE_URL=postgresql://user:pass@host:5432/db
+SWING_BARS_SCHEMA=swing_bars
 ```
 
 未设置时行情缓存默认仓库下 `data/cache/swing_bars_full`；`MARKET_CAPS_DATABASE_URL`
 供 `scripts/fetch_market_caps.py` 导出市值缓存（密码等特殊字符需 percent-encode，
-如 `@` 写作 `%40`）。`SWING_BARS_DATABASE_URL` 供 `scripts/ingest_swing_bars.py`
-落库与 `mvp_edge_check.py --bars-url` 读回（不设则默认 `sqlite:///data/swing_bars.db`）。
+如 `@` 写作 `%40`）。`SWING_BARS_DATABASE_URL` + `SWING_BARS_SCHEMA` 供
+`scripts/ingest_swing_bars.py` 落库与 `mvp_edge_check.py --bars-url/--bars-schema` 读回
+（不设 URL 则默认 `sqlite:///data/swing_bars.db`，不设 schema 则用数据库默认 schema）。
 
 ## 4. B2 口径与市值缓存（V3.0 §4.4/§4.5）
 
@@ -125,7 +127,7 @@ SWING_BARS_DATABASE_URL=postgresql://user:pass@host:5432/db
 - 市值缓存自 2017-05-26 起（stock_eod_daily 起点）；更早区间 B2 回退 20 日均额代理分位桶。
 - BaoStock hfq 的配股除权漏调整见上节；legacy 口径的 size 为 20 日均额代理、行业为当前口径。
 - 运行触发只使用缓存，不负责补数据。
-- 行情全量入库目前落在本地 sqlite（`data/swing_bars.db`），生产 PostgreSQL 实例待定；
+- 行情全量入库：本地 sqlite（`data/swing_bars.db`）与 PostgreSQL `swing_bars` schema 均已落齐；
   入库后的 `adj_factor` 仍来自 BaoStock hfq，配股除权漏调整问题需按 §4 的交叉校验口径另行重建。
 
 ## 7. 行情落库（V3.0 I-4）
@@ -163,6 +165,13 @@ SWING_BARS_DATABASE_URL=postgresql://user:pass@host:5432/db
   二级索引「落库前删、写完后建」（大表逐行维护非聚簇索引是尾部退化的主因）；
 - 单测：`tests/unit/test_bars_store.py`（幂等、重抓收敛、窗口过滤、读回同构）。
 
-已验证（2026-10-30）：全量 **6,371,456 行 / 3328 只**入本地 sqlite（1.07GB，`quick_check` ok）；
-从库读回全窗口重跑 1511 笔，`trades.csv`/`performance_metrics.json`/`signals.csv` 与 CSV
-路径**逐字节相同**，`verify_mvp_reproduction` 判 **MATCH**。
+已验证（2026-10-30）：全量 **6,371,456 行 / 3328 只**入本地 sqlite（1.07GB，`quick_check` ok）
+与 PostgreSQL **`swing_bars` schema**（表 1140MB，全量入库 18m54s）；两条库路径读回重跑均
+1511 笔，`trades.csv`/`performance_metrics.json`/`signals.csv`/`orders.csv`/`fills.csv`
+与 CSV 路径**逐字节相同**，`verify_mvp_reproduction` 判 **MATCH**（PG 读回 3m10s）。
+
+选用独立 schema 而不是独立库的理由：与 `public.stock_eod_daily` 同库可跨 schema JOIN 对账
+（下一步重建 `adj_factor` 直接用得上），同时表名/权限与业务表完全隔离。连接串在日志中
+经 `mask_url()` 掩掉密码；裸 `postgres://` 会自动改写为 `postgresql+psycopg2://`。
+落库命令：`SWING_BARS_DATABASE_URL=... SWING_BARS_SCHEMA=swing_bars python scripts/ingest_swing_bars.py
+--cache-dir data/cache/swing_bars_full`（幂等，重跑会全部跳过）。

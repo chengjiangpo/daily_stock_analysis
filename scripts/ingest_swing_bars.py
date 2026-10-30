@@ -31,8 +31,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.data.bars_store import (  # noqa: E402
+    ENV_SCHEMA_KEY,
     ENV_URL_KEY,
     ingest_cache,
+    mask_url,
+    resolve_schema,
     resolve_url,
     table_counts,
 )
@@ -46,6 +49,12 @@ def main() -> int:
         default=None,
         help=f"数据库 URL；默认环境变量 {ENV_URL_KEY} 或 sqlite:///data/swing_bars.db",
     )
+    parser.add_argument(
+        "--schema",
+        default=None,
+        help=f"目标 schema（PostgreSQL 推荐独立 schema，如 swing_bars）；"
+        f"默认环境变量 {ENV_SCHEMA_KEY}，不设则用默认 schema",
+    )
     parser.add_argument("--start", default=None, help="只落该日期之后的行情（默认全部）")
     parser.add_argument("--end", default=None, help="只落该日期之前的行情（默认全部）")
     parser.add_argument("--codes-file", default=None, help="每行一个 6 位代码（默认扫描缓存全部）")
@@ -57,6 +66,7 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     url = resolve_url(args.url)
+    schema = resolve_schema(args.schema)
 
     codes = None
     if args.codes_file:
@@ -71,7 +81,12 @@ def main() -> int:
         root = Path(args.cache_dir)
         codes = sorted(path.name[:-7] for path in root.glob("raw/*.csv.gz"))[: args.limit_codes]
 
-    logging.info("落库目标：%s（缓存 %s）", url, args.cache_dir)
+    logging.info(
+        "落库目标：%s%s（缓存 %s）",
+        mask_url(url),
+        f" [schema={schema}]" if schema else "",
+        args.cache_dir,
+    )
     result = ingest_cache(
         cache_dir=args.cache_dir,
         url=url,
@@ -81,6 +96,7 @@ def main() -> int:
         refresh=args.refresh,
         dry_run=args.dry_run,
         batch_codes=args.batch_codes,
+        schema=schema,
     )
     summary = result.summary()
     if args.dry_run:
@@ -91,7 +107,7 @@ def main() -> int:
             summary["codes_without_data"],
         )
     else:
-        logging.info("落库完成：%s；库内现有 %s", summary, table_counts(url))
+        logging.info("落库完成：%s；库内现有 %s", summary, table_counts(url, schema))
     return 0
 
 

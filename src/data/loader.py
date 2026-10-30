@@ -49,6 +49,7 @@ def load_frames(
     limit_codes: int = 0,
     refresh: bool = False,
     bars_url: Optional[str] = None,
+    bars_schema: Optional[str] = None,
     progress_every: int = 20,
 ) -> Dict[str, pd.DataFrame]:
     if data_dir:
@@ -58,19 +59,20 @@ def load_frames(
     codes: Optional[list[str]] = None
     if bars_url:
         # I-4：从库读回，输出与 CSV 缓存同构；行业仍从缓存目录补（可缺）
-        from .bars_store import load_frames_from_db
+        from .bars_store import load_frames_from_db, mask_url
 
         if codes_file:
             codes = [
                 line.strip() for line in Path(codes_file).read_text(encoding="utf-8").splitlines() if line.strip()
             ]
-        logger.info("从数据库装载行情（%s）", bars_url)
+        logger.info("从数据库装载行情（%s%s）", mask_url(bars_url), f" [schema={bars_schema}]" if bars_schema else "")
         frames = load_frames_from_db(
             url=bars_url,
             start=start,
             end=end,
             codes=codes,
             limit_codes=limit_codes,
+            schema=bars_schema,
         )
         logger.info("载入 %d 只股票（数据库）", len(frames))
         industry_file = cache_root / "industry.json" if cache_root is not None else None

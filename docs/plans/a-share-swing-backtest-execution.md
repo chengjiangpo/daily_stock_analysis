@@ -364,26 +364,34 @@ BaoStock 日线装入关系库，使回测不再依赖单一机器上的 CSV 缓
 | `swing_bars_daily` | `(code, trade_date)` | 不复权真实价 OHLC + `pre_close`/`volume`/`amount`/`turn`/`pct_chg`/`tradestatus`/`is_st`，后复权 `hfq_close` 与 `adj_factor`（信号层用），`adjustflag` 保留原始抓取口径 |
 | `swing_bars_fetch_meta` | `code` | 抓取溯源：`requested_start/end`、`first_date`、`last_date`、`rows`、`fetched_at`，用于判断缓存是否覆盖请求窗口（等价于原 `meta/*.json`） |
 
-- 后端无关：默认 `sqlite:///data/swing_bars.db`，生产建议 PostgreSQL（与 `fund-analysis`
-  的 `stock_eod_daily` 同库便于对账）；URL 由 `SWING_BARS_DATABASE_URL` 或 `--url` 指定。
+- 后端无关：默认 `sqlite:///data/swing_bars.db`；生产用 PostgreSQL，**推荐独立 schema**
+  （`SWING_BARS_SCHEMA=swing_bars`，通过连接层 `search_path` 生效）：与 `fund-analysis`
+  的 `public.stock_eod_daily` 同库不同 schema，既能互不干扰、又能跨 schema 对账。
+  URL 由 `SWING_BARS_DATABASE_URL` 或 `--url` 指定；裸 `postgres://` 会按实际安装的驱动
+  自动改写为 `postgresql+psycopg2://`（本仓库依赖 psycopg2）。
 - 幂等写入：按主键 `ON CONFLICT DO UPDATE`（PostgreSQL / SQLite ≥3.24 均支持）；
   同一 `fetched_at` 的代码默认跳过，`--refresh` 强制重写。
-- 读路径：`load_frames(..., bars_url=...)` 与 `mvp_edge_check.py --bars-url`，
-  输出与 CSV 缓存同构的 `Dict[code, DataFrame]`，回测代码零改动。
+- 读路径：`load_frames(..., bars_url=..., bars_schema=...)` 与
+  `mvp_edge_check.py --bars-url/--bars-schema`，输出与 CSV 缓存同构的
+  `Dict[code, DataFrame]`，回测代码零改动。
+- 日志安全：连接串在日志里经 `mask_url()` 掩掉密码。
 
 ### 15.2 命令
 
 ```bash
-# 落库（默认 sqlite：data/swing_bars.db；可用 --url 指向 PostgreSQL）
-.venv/bin/python scripts/ingest_swing_bars.py \
-  --cache-dir data/cache/swing_bars_full --url "$SWING_BARS_DATABASE_URL"
+# 落库（PostgreSQL，独立 schema swing_bars；同脚本可用 --url 换成 sqlite）
+SWING_BARS_DATABASE_URL=postgresql://user:pass@host:5432/fund \
+SWING_BARS_SCHEMA=swing_bars \
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full
 
 # 只落 50 只做冒烟 / 只看规模不写库
-.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --limit-codes 50 --dry-run
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --limit-codes 50
+.venv/bin/python scripts/ingest_swing_bars.py --cache-dir data/cache/swing_bars_full --dry-run
 
 # 从库读回跑回测（不再依赖 CSV 缓存目录）
 .venv/bin/python scripts/mvp_edge_check.py --start 2016-01-01 --end 2024-12-31 \
-  --bars-url "$SWING_BARS_DATABASE_URL" --b2 legacy --out reports/mvp_reproduction/run-legacy-db
+  --bars-url "$SWING_BARS_DATABASE_URL" --bars-schema swing_bars \
+  --b2 legacy --out reports/mvp_reproduction/run-legacy-pg
 ```
 
 ### 15.3 执行结果（2026-10-30）
@@ -391,8 +399,11 @@ BaoStock 日线装入关系库，使回测不再依赖单一机器上的 CSV 缓
 | 项 | 结果 |
 |---|---|
 | 全量落库 | **6,371,456 行 / 3328 只**（与 CSV 缓存行数完全相等），`swing_bars_fetch_meta` 3328 行 |
-| 目标库 | 本地 `sqlite:///data/swing_bars.db`，**1.07GB**（`quick_check` = ok） |
-| 从库读回等价性 | `--bars-url` 全窗口重跑：1511 笔、`final_equity` 99,363,299.99，与 CSV 路径的 `trades.csv` / `performance_metrics.json` / `signals.csv` **逐字节相同**；`verify_mvp_reproduction` 再判 **MATCH**（run `mvp-20261030-150913`） |
+| 目标库（生产） | PostgreSQL 16.13 `/fund` 的 **`swing_bars` schema**（表 `swing_bars_daily` 1140MB、`swing_bars_fetch_meta` 480kB），与 `public.stock_eod_daily` 同库不同 schema；全量入库 **18m54s**（写入 3278 只 / 6,268,632 行 + 跳过 50 只，后者为冒烟已存的验证案例） |
+| 目标库（本地） | `sqlite:///data/swing_bars.db`，**1.07GB**（`quick_check` = ok） |
+| 从库读回等价性 | 两条库路径全窗口重跑均 1511 笔、`final_equity` 99,363,299.99；`trades.csv` / `performance_metrics.json` / `signals.csv` / `orders.csv` / `fills.csv` 与 CSV 路径 **逐字节相同** |
+| 复现判级 | PG 读回再跑 `verify_mvp_reproduction`：**MATCH**（run `mvp-20261030-200939` @ `af22038`），耗时 3m10s |
+| 幂等验证 | 同一命令重跑：`codes_written=0`、全部 `codes_skipped`，库内行数不变 |
 
 落库实测与优化（重要，已并入代码）：
 
@@ -409,8 +420,10 @@ BaoStock 日线装入关系库，使回测不再依赖单一机器上的 CSV 缓
 
 ### 15.4 待办
 
-- **生产库目标待定**：本地已可用 sqlite；若要与 `fund-analysis` 的 `stock_eod_daily` 同库
-  对账，需指定 PostgreSQL 实例（建议单独 database 或 schema，避免与现有业务表混住），
-  然后用同一个 `scripts/ingest_swing_bars.py --url ... --refresh` 重跑（幂等，可重复执行）。
-- 入库后的 `adj_factor` 仍来自 BaoStock hfq，配股除权漏调整（§14 数据事实 2）需按
-  除权日跳变口径重建，优先级低于 PG 选型。
+- **`adj_factor` 重建**：入库后的复权因子仍来自 BaoStock hfq，配股除权漏调整（见 §14 数据事实 2）
+  需按除权日跳变口径重建，可直接改用同库 `public.stock_eod_daily` 的 `adj_factor`
+  （跨 schema JOIN，这正是选独立 schema 而非独立库的原因）。
+- **对账入口**：两套数据现在同库，可写一条 SQL 做抽检（`swing_bars.swing_bars_daily`
+  JOIN `public.stock_eod_daily` ON code/trade_date），后续可接成脚本。
+- **维护**：`swing_bars` schema 的备份/分区（按年）尚未做；当前单表 1140MB，
+  9 年数据量下无性能压力，按年分区属可选优化。

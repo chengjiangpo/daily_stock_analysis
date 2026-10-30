@@ -12,8 +12,24 @@ import pytest
 from src.data.bars_store import (
     ingest_cache,
     load_frames_from_db,
+    mask_url,
+    resolve_url,
     table_counts,
 )
+
+
+def test_mask_url_hides_password() -> None:
+    masked = mask_url("postgresql+psycopg2://fund:secret%40pass@localhost:5432/fund")
+    assert masked == "postgresql+psycopg2://fund:***@localhost:5432/fund"
+    assert "secret" not in masked
+    # 无凭据/无密码的 URL 原样返回
+    assert mask_url("sqlite:///data/swing_bars.db") == "sqlite:///data/swing_bars.db"
+    assert mask_url("postgresql://localhost:5432/fund") == "postgresql://localhost:5432/fund"
+
+
+def test_resolve_url_normalizes_postgres_driver() -> None:
+    resolved = resolve_url("postgres://fund:pw@localhost:5432/fund")
+    assert resolved.startswith("postgresql+psycopg")
 
 
 def _write_cache(root: Path, code: str, days: int = 5, rows: int | None = None) -> None:

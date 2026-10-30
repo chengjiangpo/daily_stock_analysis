@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_URL = "sqlite:///data/swing_bars.db"
 ENV_URL_KEY = "SWING_BARS_DATABASE_URL"
+ENV_SCHEMA_KEY = "SWING_BARS_SCHEMA"
 
 # 缓存 CSV 的列 → 落库列（缺列时留空）
 PRICE_COLUMNS = ("open", "high", "low", "close", "pre_close")
@@ -116,22 +117,79 @@ class IngestResult:
 def resolve_url(url: Optional[str] = None) -> str:
     """解析数据库 URL：显式参数 > 环境变量 > 默认 sqlite 文件。"""
     if url:
-        return url
+        return _normalize_url(url)
     import os
 
-    return os.environ.get(ENV_URL_KEY) or DEFAULT_URL
+    return _normalize_url(os.environ.get(ENV_URL_KEY) or DEFAULT_URL)
 
 
-def make_engine(url: Optional[str] = None) -> Engine:
+def _normalize_url(url: str) -> str:
+    """补全 PostgreSQL 驱动名。
+
+    SQLAlchemy 2.1 对裸 `postgresql://` 默认选 psycopg3；本仓库依赖是 psycopg2，
+    因此按实际安装的驱动改写 scheme，使「直接贴 fund-analysis 的 DATABASE_URL」也能用。
+    """
+    if not url.startswith(("postgres://", "postgresql://")):
+        return url
+    bare = url.replace("postgres://", "postgresql://", 1)
+    if bare.startswith("postgresql+psycopg"):
+        return bare
+    import importlib.util
+
+    driver = "psycopg" if importlib.util.find_spec("psycopg") else "psycopg2"
+    return bare.replace("postgresql://", f"postgresql+{driver}://", 1)
+
+
+def resolve_schema(schema: Optional[str] = None) -> Optional[str]:
+    """解析目标 schema：显式参数 > 环境变量 > None（默认 schema）。"""
+    if schema:
+        return schema
+    import os
+
+    return os.environ.get(ENV_SCHEMA_KEY) or None
+
+
+def mask_url(url: str) -> str:
+    """日志用：掩掉连接串里的密码（避免把凭据写进日志/报告）。"""
+    if "@" not in url or "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    credentials, _, host = rest.rpartition("@")
+    if ":" in credentials:
+        user, _, _password = credentials.partition(":")
+        credentials = f"{user}:***"
+    return f"{scheme}://{credentials}@{host}"
+
+
+def make_engine(url: Optional[str] = None, schema: Optional[str] = None) -> Engine:
+    """建 Engine。
+
+    指定 schema 时（推荐 PostgreSQL 用独立 schema，如 `swing_bars`），通过
+    `search_path` 在连接层生效：ORM 里仍是未限定表名，读写自动落到该 schema，
+    与业务表（如 fund-analysis 的 `public.stock_eod_daily`）互不干扰但可跨 schema 对账。
+    """
     resolved = resolve_url(url)
+    schema_name = resolve_schema(schema)
     kwargs: dict = {"future": True, "pool_pre_ping": True}
     if resolved.startswith("sqlite"):
         # SQLite 批量写入需要关闭同名线程检查
         kwargs["connect_args"] = {"check_same_thread": False}
+    elif schema_name:
+        kwargs["connect_args"] = {"options": f"-csearch_path={schema_name},public"}
     engine = create_engine(resolved, **kwargs)
     if engine.dialect.name == "sqlite":
         _apply_sqlite_pragmas(engine)
+    elif schema_name:
+        _ensure_schema_exists(engine, schema_name)
     return engine
+
+
+def _ensure_schema_exists(engine: Engine, schema: str) -> None:
+    """建 schema（幂等）；同时确保 public 在 search_path 里以便读业务表。"""
+    from sqlalchemy import text
+
+    with engine.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
 
 
 def _apply_sqlite_pragmas(engine: Engine) -> None:
@@ -323,6 +381,7 @@ def ingest_cache(
     dry_run: bool = False,
     batch_codes: int = 50,
     progress_every: int = 50,
+    schema: Optional[str] = None,
 ) -> IngestResult:
     """把行情缓存落库（幂等）。
 
@@ -348,7 +407,7 @@ def ingest_cache(
                 result.rows_written += len(payload.rows)
         return result
 
-    engine = make_engine(url)
+    engine = make_engine(url, schema)
     ensure_schema(engine)
     factory = sessionmaker(bind=engine, future=True)
     now = pd.Timestamp.now().to_pydatetime()
@@ -395,8 +454,8 @@ def ingest_cache(
     return result
 
 
-def table_counts(url: Optional[str] = None) -> dict:
-    engine = make_engine(url)
+def table_counts(url: Optional[str] = None, schema: Optional[str] = None) -> dict:
+    engine = make_engine(url, schema)
     ensure_schema(engine)
     with Session(engine) as session:
         bars = session.execute(select(func.count()).select_from(SwingBarDaily)).scalar_one()
@@ -410,9 +469,10 @@ def load_frames_from_db(
     end: Optional[str] = None,
     codes: Optional[Iterable[str]] = None,
     limit_codes: int = 0,
+    schema: Optional[str] = None,
 ) -> Dict[str, pd.DataFrame]:
     """从库读回行情，输出与 CSV 缓存同构的 ``Dict[code, DataFrame]``（索引 date）。"""
-    engine = make_engine(url)
+    engine = make_engine(url, schema)
     ensure_schema(engine)
     statement = select(SwingBarDaily)
     if start:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from src.strategy.filters import PoolConfig
 from src.validation.stats import performance_metrics, trade_metrics
 
 DEFAULT_BACKTEST_PATH = PROJECT_ROOT / "config" / "backtest.yaml"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,6 +90,8 @@ def run_backtest(
     constrained: bool = True,
     fixed_notional: float = 60000.0,
     run_id: Optional[str] = None,
+    results_url: Optional[str] = None,
+    results_schema: Optional[str] = None,
 ) -> RunOutputs:
     strategy = build_strategy(strategy_name)
     base_portfolio = load_portfolio_config(aum=aum)
@@ -130,6 +135,8 @@ def run_backtest(
             "fixed_notional": fixed_notional if not constrained else None,
         },
         run_id=run_id,
+        results_url=results_url,
+        results_schema=results_schema,
     )
 
 
@@ -143,6 +150,8 @@ def persist_result(
     data_hash: str,
     extra: Optional[dict] = None,
     run_id: Optional[str] = None,
+    results_url: Optional[str] = None,
+    results_schema: Optional[str] = None,
 ) -> RunOutputs:
     run_dir = Path(out_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -188,7 +197,73 @@ def persist_result(
     (run_dir / "summary.md").write_text(
         _summary_markdown(metadata, performance, trade_stats), encoding="utf-8"
     )
+
+    # V3.0 I-4：同时写入结果库（失败不影响CSV/JSON 产物）
+    persisted = _persist_to_db(
+        result=result,
+        metadata=metadata,
+        performance=performance,
+        trade_stats=trade_stats,
+        results_url=results_url,
+        results_schema=results_schema,
+    )
+    if persisted is not None:
+        metadata["results_db"] = persisted
+        (run_dir / "run_metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
     return RunOutputs(run_dir=run_dir, metadata=metadata)
+
+
+def _persist_to_db(
+    result: BacktestResult,
+    metadata: dict,
+    performance: dict,
+    trade_stats: dict,
+    results_url: Optional[str],
+    results_schema: Optional[str],
+) -> Optional[dict]:
+    """把运行结果写入 V3.0 I-4 的结果库；未配置或失败时返回 None。
+
+    触发条件：显式传 ``results_url``/``results_schema``，或设环境变量
+    ``SWING_RESULTS_DATABASE_URL`` / ``SWING_RESULTS_SCHEMA``。
+    设计为“可选、失败不影响主流程”：研究阶段的 CSV/JSON 报告仍是主产物。
+    """
+    import os
+
+    enabled = bool(
+        results_url
+        or results_schema
+        or os.getenv("SWING_RESULTS_DATABASE_URL")
+        or os.getenv("SWING_RESULTS_SCHEMA")
+    )
+    if not enabled:
+        return None
+    try:
+        from src.data.results_store import RunPayload, save_run
+
+        counts = save_run(
+            RunPayload(
+                run_id=metadata["run_id"],
+                metadata=metadata,
+                performance=performance,
+                trade_metrics=trade_stats,
+                equity=result.equity,
+                signals=result.signals,
+                orders=result.orders,
+                fills=result.fills,
+                positions=result.positions,
+                trades=result.trades,
+                diagnostics=result.diagnostics,
+            ),
+            url=results_url,
+            schema=results_schema,
+        )
+        logger.info("结果已落库：%s", counts)
+        return counts
+    except Exception as error:  # noqa: BLE001 - 落库失败不阻断主流程
+        logger.warning("结果落库失败（已跳过，CSV/JSON 产物不受影响）：%s", error)
+        return None
 
 
 def _period_returns(equity: pd.Series, freq: str) -> pd.Series:

@@ -110,6 +110,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--offline-fixtures", action="store_true", help="使用合成行情跑通流程")
     parser.add_argument("--portfolio-constrained", action="store_true",
                         help="启用 5 仓/2 笔/日/回撤熔断组合约束（默认信号级评估）")
+    parser.add_argument("--results-url", default=None,
+                        help="结果库 URL（V3.0 I-4）；不传则默认不落库")
+    parser.add_argument("--results-schema", default=None, help="结果库 schema（如 swing_bars）")
     return parser.parse_args()
 
 
@@ -534,6 +537,7 @@ def main() -> int:
         "rule_version": strategy.version,
         "params": strategy.params,
         "cost_tier": args.cost_tier,
+        "mode": "portfolio" if args.portfolio_constrained else "signal",
         "aum": args.aum,
         "period": [args.start, args.end],
         "data_hash": snapshot_hash(frames),
@@ -576,9 +580,47 @@ def main() -> int:
         decision, reason, len(engine.frames), rejections, trades_by_year,
         b2_mode=b2_mode, b2_coverage=coverage_dict,
     )
+    _persist_results_db(args, run_metadata, result, performance, trade_stats)
     logger.info("结论: %s — %s", decision, reason)
     logger.info("报告目录: %s", out_dir)
     return 0
+
+
+def _persist_results_db(args, run_metadata, result, performance, trade_stats) -> None:
+    """V3.0 I-4：把 MVP 结果同时写入结果库（未配置时静默跳过，失败不阻断）。"""
+    import os
+
+    enabled = bool(
+        args.results_url
+        or args.results_schema
+        or os.getenv("SWING_RESULTS_DATABASE_URL")
+        or os.getenv("SWING_RESULTS_SCHEMA")
+    )
+    if not enabled:
+        return
+    try:
+        from src.data.results_store import RunPayload, save_run
+
+        counts = save_run(
+            RunPayload(
+                run_id=run_metadata["run_id"],
+                metadata=run_metadata,
+                performance=performance,
+                trade_metrics=trade_stats,
+                equity=result.equity,
+                signals=result.signals,
+                orders=result.orders,
+                fills=result.fills,
+                positions=result.positions,
+                trades=result.trades,
+                diagnostics=result.diagnostics,
+            ),
+            url=args.results_url,
+            schema=args.results_schema,
+        )
+        logger.info("结果已落库：%s", counts)
+    except Exception as error:  # noqa: BLE001 - 落库失败不阻断主流程
+        logger.warning("结果落库失败（已跳过，CSV/JSON 产物不受影响）：%s", error)
 
 
 if __name__ == "__main__":

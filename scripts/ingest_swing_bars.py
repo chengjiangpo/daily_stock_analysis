@@ -62,6 +62,11 @@ def main() -> int:
     parser.add_argument("--batch-codes", type=int, default=50, help="每批提交的股票数")
     parser.add_argument("--refresh", action="store_true", help="忽略已有 fetched_at，强制重写")
     parser.add_argument("--dry-run", action="store_true", help="只统计规模，不建表不写库")
+    parser.add_argument(
+        "--with-pool",
+        action="store_true",
+        help="同时落时点股票池到 swing_pool_daily（V3.0 I-4；与 run 无关的共享表）",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -108,6 +113,23 @@ def main() -> int:
         )
     else:
         logging.info("落库完成：%s；库内现有 %s", summary, table_counts(url, schema))
+
+    if args.with_pool and not args.dry_run:
+        logging.info("开始落时点股票池 ...")
+        from src.data.loader import load_frames
+        from src.data.results_store import save_pool_daily, table_counts as results_table_counts
+
+        frames = load_frames(
+            start=args.start or "2016-01-01",
+            end=args.end or "2026-12-31",
+            cache_dir=args.cache_dir,
+            codes_file=args.codes_file,
+            limit_codes=args.limit_codes,
+        )
+        written = save_pool_daily(
+            frames, url=url, schema=schema, start=args.start, end=args.end
+        )
+        logging.info("股票池落库完成：%d 行；结果库现有 %s", written, results_table_counts(url, schema))
     return 0
 
 

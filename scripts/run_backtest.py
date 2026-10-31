@@ -43,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-months", type=int, default=6)
     parser.add_argument("--step-months", type=int, default=6)
     parser.add_argument("--no-diagnostics", action="store_true")
+    parser.add_argument("--results-url", default=None,
+                        help="结果库 URL（V3.0 I-4）；不传则默认不落库")
+    parser.add_argument("--results-schema", default=None, help="结果库 schema（如 swing_bars）")
     return parser.parse_args()
 
 
@@ -78,6 +81,8 @@ def main() -> int:
             aum=args.aum,
             out_dir=args.out,
             record_diagnostics=not args.no_diagnostics,
+            results_url=args.results_url,
+            results_schema=args.results_schema,
         )
         logger.info("回测完成: %s", outputs.metadata["engine"])
         logger.info("报告目录: %s", outputs.run_dir)
@@ -110,6 +115,8 @@ def main() -> int:
             aum=args.aum,
             out_dir=root / "windows" / f"{index:02d}",
             record_diagnostics=not args.no_diagnostics,
+            results_url=args.results_url,
+            results_schema=args.results_schema,
         )
         equity = pd.read_csv(outputs.run_dir / "daily_equity.csv", parse_dates=["trade_date"])
         metrics = performance_metrics(pd.Series(equity["equity"].to_numpy(), index=equity["trade_date"]))

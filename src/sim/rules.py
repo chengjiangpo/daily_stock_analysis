@@ -47,7 +47,9 @@ def classify_board(code: str) -> Board:
         raise ValueError(f"无法识别的 A 股代码: {code!r}")
     if normalized.startswith(("600", "601", "603", "605", "000", "001", "002", "003")):
         return Board.MAIN
-    if normalized.startswith(("300", "301")):
+    # 302 为深交所创业板 2024-09 起启用的新号段（如 302132），与 300/301 同属 GEM；
+    # 漏配会让 classify_board 抛错，进而使 filter_universe（无 try/except）整只股票中断。
+    if normalized.startswith(("300", "301", "302")):
         return Board.GEM
     if normalized.startswith(("688", "689")):
         return Board.STAR

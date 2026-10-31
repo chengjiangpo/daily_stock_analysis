@@ -65,7 +65,12 @@ def database_url(args: argparse.Namespace) -> str:
             "缺少数据库连接串：请用 --url 或设置 MARKET_CAPS_DATABASE_URL / DATABASE_URL"
             "（指向 fund-analysis 库，见 docs/swing-backtest.md）"
         )
-    return url
+    # SQLAlchemy 2.1 对裸 `postgresql://` 默认选 psycopg3，而本仓库依赖是 psycopg2；
+    # 直接贴 fund-analysis 的 DATABASE_URL 会报 ModuleNotFoundError: psycopg。
+    # 复用 bars_store 的驱动补全逻辑，两处口径保持一致。
+    from src.data.bars_store import _normalize_url
+
+    return _normalize_url(url)
 
 
 def export_caps(args: argparse.Namespace) -> pd.DataFrame:

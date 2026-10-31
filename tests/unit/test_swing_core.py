@@ -28,6 +28,11 @@ def test_board_and_exchange_classification() -> None:
     assert classify_board("300750") is Board.GEM
     assert classify_board("688981") is Board.STAR
     assert classify_board("830799") is Board.BSE
+    # 302 为创业板 2024-09 起启用的新号段，必须与 300/301 同类（曾漏配导致
+    # filter_universe 整只股票抛错）
+    assert classify_board("302132") is Board.GEM
+    assert classify_board("920001") is Board.BSE
+    assert classify_board("689009") is Board.STAR
     assert classify_exchange("600519") == "sh"
     assert classify_exchange("000001") == "sz"
     assert classify_exchange("830799") == "bj"

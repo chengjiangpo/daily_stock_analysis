@@ -54,6 +54,10 @@ reports/*
 !reports/experiments/
 !reports/experiments/ledger.csv
 !reports/experiments/README.md
+# I-5 涨跌停价全量对账证据（V3.0 §5.2，结论引用了这两份产物），其余 reports/ 仍忽略
+!reports/i5-limit-crosscheck/
+!reports/i5-limit-crosscheck/limit_crosscheck.json
+!reports/i5-limit-crosscheck/no_limit_days.csv
 *.db
 *.sqlite
 *.sqlite3

@@ -1,0 +1,941 @@
+{
+  "coverage": {
+    "table": "stock_eod_daily",
+    "overall": {
+      "rows_total": 10354468,
+      "rows_with_up": 10280241,
+      "rows_with_down": 10280241,
+      "codes_total": 5830,
+      "codes_effective": 5829
+    },
+    "conclusion": {
+      "first_effective_date": "2017-05-26",
+      "first_effective_year": 2017,
+      "last_effective_date": "2026-10-26",
+      "note": "official stk_limit 有效记录起点；在此之前不可依赖官方涨跌停价，须使用分段规则自算（config/market_rules.yaml）"
+    },
+    "by_year": [
+      {
+        "year": 2017,
+        "rows_total": 472014,
+        "rows_effective": 463308,
+        "codes_effective": 3456
+      },
+      {
+        "year": 2018,
+        "rows_total": 824535,
+        "rows_effective": 817338,
+        "codes_effective": 3570
+      },
+      {
+        "year": 2019,
+        "rows_total": 894177,
+        "rows_effective": 884731,
+        "codes_effective": 3766
+      },
+      {
+        "year": 2020,
+        "rows_total": 964131,
+        "rows_effective": 945176,
+        "codes_effective": 4146
+      },
+      {
+        "year": 2021,
+        "rows_total": 1085445,
+        "rows_effective": 1060081,
+        "codes_effective": 4694
+      },
+      {
+        "year": 2022,
+        "rows_total": 1179072,
+        "rows_effective": 1169790,
+        "codes_effective": 5098
+      },
+      {
+        "year": 2023,
+        "rows_total": 1258734,
+        "rows_effective": 1257556,
+        "codes_effective": 5377
+      },
+      {
+        "year": 2024,
+        "rows_total": 1293893,
+        "rows_effective": 1293466,
+        "codes_effective": 5432
+      },
+      {
+        "year": 2025,
+        "rows_total": 1313898,
+        "rows_effective": 1313416,
+        "codes_effective": 5495
+      },
+      {
+        "year": 2026,
+        "rows_total": 1068569,
+        "rows_effective": 1068154,
+        "codes_effective": 5599
+      }
+    ]
+  },
+  "crosscheck": {
+    "range": {
+      "start": "2016-01-01",
+      "end": "2026-12-31"
+    },
+    "codes_scanned": null,
+    "rows_compared": 5473997,
+    "rows_without_pre_close": 0,
+    "board_skipped": 0,
+    "up_limit": {
+      "both_limited_equal": 5470644,
+      "both_limited_differ": 0,
+      "first_day_regime_differ": 2,
+      "both_no_limit": 245,
+      "official_no_limit_only": 62,
+      "computed_no_limit_only": 0
+    },
+    "down_limit": {
+      "both_limited_equal": 5470643,
+      "both_limited_differ": 0,
+      "first_day_regime_differ": 3,
+      "both_no_limit": 245,
+      "official_no_limit_only": 62,
+      "computed_no_limit_only": 0
+    },
+    "limited_rows_compared": 10941287,
+    "real_mismatch": 0,
+    "regime_gap": 124,
+    "first_day_gap": 5,
+    "first_day_cases": [
+      {
+        "code": "001965",
+        "trade_date": "2017-12-25",
+        "field": "up_limit",
+        "official": "13.95",
+        "computed": "18.26"
+      },
+      {
+        "code": "001965",
+        "trade_date": "2017-12-25",
+        "field": "down_limit",
+        "official": "11.41",
+        "computed": "8.12"
+      },
+      {
+        "code": "601598",
+        "trade_date": "2019-01-18",
+        "field": "up_limit",
+        "official": "5.76",
+        "computed": "7.55"
+      },
+      {
+        "code": "601598",
+        "trade_date": "2019-01-18",
+        "field": "down_limit",
+        "official": "4.72",
+        "computed": "3.35"
+      },
+      {
+        "code": "601975",
+        "trade_date": "2019-01-08",
+        "field": "down_limit",
+        "official": "2.41",
+        "computed": "2.76"
+      }
+    ],
+    "real_mismatch_rate": 0.0,
+    "tolerance": "0.01",
+    "by_year": [
+      {
+        "year": 2017,
+        "compared": 372818,
+        "mismatch": 0
+      },
+      {
+        "year": 2018,
+        "compared": 647767,
+        "mismatch": 0
+      },
+      {
+        "year": 2019,
+        "compared": 695433,
+        "mismatch": 0
+      },
+      {
+        "year": 2020,
+        "compared": 712127,
+        "mismatch": 8
+      },
+      {
+        "year": 2021,
+        "compared": 747893,
+        "mismatch": 6
+      },
+      {
+        "year": 2022,
+        "compared": 760083,
+        "mismatch": 68
+      },
+      {
+        "year": 2023,
+        "compared": 769678,
+        "mismatch": 24
+      },
+      {
+        "year": 2024,
+        "compared": 768198,
+        "mismatch": 18
+      }
+    ],
+    "skipped_rules": {},
+    "examples": {
+      "official_no_limit_only": [
+        {
+          "code": "000038",
+          "trade_date": "2023-06-19",
+          "field": "up_limit",
+          "category": "official_no_limit_only",
+          "official": "1000000.00",
+          "computed": "3.77",
+          "pre_close": 3.43,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000038",
+          "trade_date": "2023-06-19",
+          "field": "down_limit",
+          "category": "official_no_limit_only",
+          "official": "0.01",
+          "computed": "3.09",
+          "pre_close": 3.43,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000502",
+          "trade_date": "2022-06-06",
+          "field": "up_limit",
+          "category": "official_no_limit_only",
+          "official": "1000000.00",
+          "computed": "4.18",
+          "pre_close": 3.8,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000502",
+          "trade_date": "2022-06-06",
+          "field": "down_limit",
+          "category": "official_no_limit_only",
+          "official": "0.01",
+          "computed": "3.42",
+          "pre_close": 3.8,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000585",
+          "trade_date": "2022-04-28",
+          "field": "up_limit",
+          "category": "official_no_limit_only",
+          "official": "1000000.00",
+          "computed": "1.08",
+          "pre_close": 0.98,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000585",
+          "trade_date": "2022-04-28",
+          "field": "down_limit",
+          "category": "official_no_limit_only",
+          "official": "0.01",
+          "computed": "0.88",
+          "pre_close": 0.98,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000606",
+          "trade_date": "2023-06-13",
+          "field": "up_limit",
+          "category": "official_no_limit_only",
+          "official": "1000000.00",
+          "computed": "1.01",
+          "pre_close": 0.92,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000606",
+          "trade_date": "2023-06-13",
+          "field": "down_limit",
+          "category": "official_no_limit_only",
+          "official": "0.01",
+          "computed": "0.83",
+          "pre_close": 0.92,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000611",
+          "trade_date": "2022-06-07",
+          "field": "up_limit",
+          "category": "official_no_limit_only",
+          "official": "1000000.00",
+          "computed": "3.82",
+          "pre_close": 3.47,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        },
+        {
+          "code": "000611",
+          "trade_date": "2022-06-07",
+          "field": "down_limit",
+          "category": "official_no_limit_only",
+          "official": "0.01",
+          "computed": "3.12",
+          "pre_close": 3.47,
+          "is_st": false,
+          "listed_days": null,
+          "rule": "regular"
+        }
+      ]
+    },
+    "mismatch_by_year_pct": [],
+    "mismatch_top_codes": [],
+    "no_limit_days_sample": [
+      {
+        "code": "000038",
+        "trade_date": "2023-06-19",
+        "pre_close": 3.43
+      },
+      {
+        "code": "000038",
+        "trade_date": "2023-06-19",
+        "pre_close": 3.43
+      },
+      {
+        "code": "000502",
+        "trade_date": "2022-06-06",
+        "pre_close": 3.8
+      },
+      {
+        "code": "000502",
+        "trade_date": "2022-06-06",
+        "pre_close": 3.8
+      },
+      {
+        "code": "000585",
+        "trade_date": "2022-04-28",
+        "pre_close": 0.98
+      },
+      {
+        "code": "000585",
+        "trade_date": "2022-04-28",
+        "pre_close": 0.98
+      },
+      {
+        "code": "000606",
+        "trade_date": "2023-06-13",
+        "pre_close": 0.92
+      },
+      {
+        "code": "000606",
+        "trade_date": "2023-06-13",
+        "pre_close": 0.92
+      },
+      {
+        "code": "000611",
+        "trade_date": "2022-06-07",
+        "pre_close": 3.47
+      },
+      {
+        "code": "000611",
+        "trade_date": "2022-06-07",
+        "pre_close": 3.47
+      },
+      {
+        "code": "000613",
+        "trade_date": "2022-06-08",
+        "pre_close": 2.13
+      },
+      {
+        "code": "000613",
+        "trade_date": "2022-06-08",
+        "pre_close": 2.13
+      },
+      {
+        "code": "000670",
+        "trade_date": "2022-08-22",
+        "pre_close": 2.25
+      },
+      {
+        "code": "000670",
+        "trade_date": "2022-08-22",
+        "pre_close": 2.25
+      },
+      {
+        "code": "000673",
+        "trade_date": "2022-06-13",
+        "pre_close": 1.54
+      },
+      {
+        "code": "000673",
+        "trade_date": "2022-06-13",
+        "pre_close": 1.54
+      },
+      {
+        "code": "000687",
+        "trade_date": "2022-05-26",
+        "pre_close": 0.66
+      },
+      {
+        "code": "000687",
+        "trade_date": "2022-05-26",
+        "pre_close": 0.66
+      },
+      {
+        "code": "000792",
+        "trade_date": "2021-08-10",
+        "pre_close": 8.84
+      },
+      {
+        "code": "000792",
+        "trade_date": "2021-08-10",
+        "pre_close": 8.84
+      },
+      {
+        "code": "000806",
+        "trade_date": "2023-06-13",
+        "pre_close": 1.0
+      },
+      {
+        "code": "000806",
+        "trade_date": "2023-06-13",
+        "pre_close": 1.0
+      },
+      {
+        "code": "000835",
+        "trade_date": "2022-04-27",
+        "pre_close": 1.03
+      },
+      {
+        "code": "000835",
+        "trade_date": "2022-04-27",
+        "pre_close": 1.03
+      },
+      {
+        "code": "000995",
+        "trade_date": "2020-12-16",
+        "pre_close": 7.47
+      },
+      {
+        "code": "000995",
+        "trade_date": "2020-12-16",
+        "pre_close": 7.47
+      },
+      {
+        "code": "000996",
+        "trade_date": "2024-06-06",
+        "pre_close": 1.49
+      },
+      {
+        "code": "000996",
+        "trade_date": "2024-06-06",
+        "pre_close": 1.49
+      },
+      {
+        "code": "001267",
+        "trade_date": "2021-11-17",
+        "pre_close": 3.91
+      },
+      {
+        "code": "001267",
+        "trade_date": "2021-11-17",
+        "pre_close": 3.91
+      },
+      {
+        "code": "001289",
+        "trade_date": "2022-01-24",
+        "pre_close": 32.14
+      },
+      {
+        "code": "001289",
+        "trade_date": "2022-01-24",
+        "pre_close": 32.14
+      },
+      {
+        "code": "002087",
+        "trade_date": "2024-06-06",
+        "pre_close": 0.46
+      },
+      {
+        "code": "002087",
+        "trade_date": "2024-06-06",
+        "pre_close": 0.46
+      },
+      {
+        "code": "002089",
+        "trade_date": "2024-03-26",
+        "pre_close": 0.78
+      },
+      {
+        "code": "002089",
+        "trade_date": "2024-03-26",
+        "pre_close": 0.78
+      },
+      {
+        "code": "002147",
+        "trade_date": "2022-06-01",
+        "pre_close": 3.14
+      },
+      {
+        "code": "002147",
+        "trade_date": "2022-06-01",
+        "pre_close": 3.14
+      },
+      {
+        "code": "002411",
+        "trade_date": "2023-06-19",
+        "pre_close": 3.23
+      },
+      {
+        "code": "002411",
+        "trade_date": "2023-06-19",
+        "pre_close": 3.23
+      },
+      {
+        "code": "002417",
+        "trade_date": "2023-06-15",
+        "pre_close": 1.24
+      },
+      {
+        "code": "002417",
+        "trade_date": "2023-06-15",
+        "pre_close": 1.24
+      },
+      {
+        "code": "002433",
+        "trade_date": "2024-06-14",
+        "pre_close": 0.51
+      },
+      {
+        "code": "002433",
+        "trade_date": "2024-06-14",
+        "pre_close": 0.51
+      },
+      {
+        "code": "002447",
+        "trade_date": "2022-06-06",
+        "pre_close": 1.1
+      },
+      {
+        "code": "002447",
+        "trade_date": "2022-06-06",
+        "pre_close": 1.1
+      },
+      {
+        "code": "002464",
+        "trade_date": "2022-06-07",
+        "pre_close": 2.09
+      },
+      {
+        "code": "002464",
+        "trade_date": "2022-06-07",
+        "pre_close": 2.09
+      },
+      {
+        "code": "002473",
+        "trade_date": "2022-05-31",
+        "pre_close": 5.19
+      },
+      {
+        "code": "002473",
+        "trade_date": "2022-05-31",
+        "pre_close": 5.19
+      },
+      {
+        "code": "002499",
+        "trade_date": "2023-03-27",
+        "pre_close": 1.68
+      },
+      {
+        "code": "002499",
+        "trade_date": "2023-03-27",
+        "pre_close": 1.68
+      },
+      {
+        "code": "002618",
+        "trade_date": "2022-05-31",
+        "pre_close": 1.09
+      },
+      {
+        "code": "002618",
+        "trade_date": "2022-05-31",
+        "pre_close": 1.09
+      },
+      {
+        "code": "002684",
+        "trade_date": "2022-06-06",
+        "pre_close": 2.26
+      },
+      {
+        "code": "002684",
+        "trade_date": "2022-06-06",
+        "pre_close": 2.26
+      },
+      {
+        "code": "002751",
+        "trade_date": "2023-06-20",
+        "pre_close": 4.94
+      },
+      {
+        "code": "002751",
+        "trade_date": "2023-06-20",
+        "pre_close": 4.94
+      },
+      {
+        "code": "002770",
+        "trade_date": "2022-06-01",
+        "pre_close": 2.37
+      },
+      {
+        "code": "002770",
+        "trade_date": "2022-06-01",
+        "pre_close": 2.37
+      },
+      {
+        "code": "002781",
+        "trade_date": "2023-06-12",
+        "pre_close": 1.64
+      },
+      {
+        "code": "002781",
+        "trade_date": "2023-06-12",
+        "pre_close": 1.64
+      },
+      {
+        "code": "600090",
+        "trade_date": "2022-06-10",
+        "pre_close": 0.96
+      },
+      {
+        "code": "600090",
+        "trade_date": "2022-06-10",
+        "pre_close": 0.96
+      },
+      {
+        "code": "600091",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.85
+      },
+      {
+        "code": "600091",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.85
+      },
+      {
+        "code": "600093",
+        "trade_date": "2022-05-26",
+        "pre_close": 0.78
+      },
+      {
+        "code": "600093",
+        "trade_date": "2022-05-26",
+        "pre_close": 0.78
+      },
+      {
+        "code": "600145",
+        "trade_date": "2022-03-30",
+        "pre_close": 1.03
+      },
+      {
+        "code": "600145",
+        "trade_date": "2022-03-30",
+        "pre_close": 1.03
+      },
+      {
+        "code": "600146",
+        "trade_date": "2022-06-02",
+        "pre_close": 1.19
+      },
+      {
+        "code": "600146",
+        "trade_date": "2022-06-02",
+        "pre_close": 1.19
+      },
+      {
+        "code": "600209",
+        "trade_date": "2022-05-25",
+        "pre_close": 2.08
+      },
+      {
+        "code": "600209",
+        "trade_date": "2022-05-25",
+        "pre_close": 2.08
+      },
+      {
+        "code": "600242",
+        "trade_date": "2023-05-31",
+        "pre_close": 0.45
+      },
+      {
+        "code": "600242",
+        "trade_date": "2023-05-31",
+        "pre_close": 0.45
+      },
+      {
+        "code": "600275",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.97
+      },
+      {
+        "code": "600275",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.97
+      },
+      {
+        "code": "600291",
+        "trade_date": "2022-05-17",
+        "pre_close": 1.73
+      },
+      {
+        "code": "600291",
+        "trade_date": "2022-05-17",
+        "pre_close": 1.73
+      },
+      {
+        "code": "600306",
+        "trade_date": "2024-05-29",
+        "pre_close": 1.99
+      },
+      {
+        "code": "600306",
+        "trade_date": "2024-05-29",
+        "pre_close": 1.99
+      },
+      {
+        "code": "600385",
+        "trade_date": "2022-06-10",
+        "pre_close": 3.33
+      },
+      {
+        "code": "600385",
+        "trade_date": "2022-06-10",
+        "pre_close": 3.33
+      },
+      {
+        "code": "600532",
+        "trade_date": "2023-05-30",
+        "pre_close": 3.34
+      },
+      {
+        "code": "600532",
+        "trade_date": "2023-05-30",
+        "pre_close": 3.34
+      },
+      {
+        "code": "600555",
+        "trade_date": "2022-06-16",
+        "pre_close": 1.22
+      },
+      {
+        "code": "600555",
+        "trade_date": "2022-06-16",
+        "pre_close": 1.22
+      },
+      {
+        "code": "600610",
+        "trade_date": "2020-08-17",
+        "pre_close": 3.26
+      },
+      {
+        "code": "600610",
+        "trade_date": "2020-08-17",
+        "pre_close": 3.26
+      },
+      {
+        "code": "600647",
+        "trade_date": "2024-06-05",
+        "pre_close": 7.13
+      },
+      {
+        "code": "600647",
+        "trade_date": "2024-06-05",
+        "pre_close": 7.13
+      },
+      {
+        "code": "600652",
+        "trade_date": "2022-05-25",
+        "pre_close": 1.02
+      },
+      {
+        "code": "600652",
+        "trade_date": "2022-05-25",
+        "pre_close": 1.02
+      },
+      {
+        "code": "600695",
+        "trade_date": "2022-05-17",
+        "pre_close": 1.7
+      },
+      {
+        "code": "600695",
+        "trade_date": "2022-05-17",
+        "pre_close": 1.7
+      },
+      {
+        "code": "600766",
+        "trade_date": "2024-06-05",
+        "pre_close": 9.84
+      },
+      {
+        "code": "600766",
+        "trade_date": "2024-06-05",
+        "pre_close": 9.84
+      },
+      {
+        "code": "600767",
+        "trade_date": "2023-05-31",
+        "pre_close": 4.16
+      },
+      {
+        "code": "600767",
+        "trade_date": "2023-05-31",
+        "pre_close": 4.16
+      },
+      {
+        "code": "600781",
+        "trade_date": "2023-05-30",
+        "pre_close": 0.84
+      },
+      {
+        "code": "600781",
+        "trade_date": "2023-05-30",
+        "pre_close": 0.84
+      },
+      {
+        "code": "600856",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.83
+      },
+      {
+        "code": "600856",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.83
+      },
+      {
+        "code": "600870",
+        "trade_date": "2022-06-02",
+        "pre_close": 3.55
+      },
+      {
+        "code": "600870",
+        "trade_date": "2022-06-02",
+        "pre_close": 3.55
+      },
+      {
+        "code": "600890",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.83
+      },
+      {
+        "code": "600890",
+        "trade_date": "2022-05-25",
+        "pre_close": 0.83
+      },
+      {
+        "code": "600896",
+        "trade_date": "2022-06-28",
+        "pre_close": 1.74
+      },
+      {
+        "code": "600896",
+        "trade_date": "2022-06-28",
+        "pre_close": 1.74
+      },
+      {
+        "code": "601399",
+        "trade_date": "2020-06-08",
+        "pre_close": 3.32
+      },
+      {
+        "code": "601399",
+        "trade_date": "2020-06-08",
+        "pre_close": 3.32
+      },
+      {
+        "code": "601868",
+        "trade_date": "2021-09-28",
+        "pre_close": 1.96
+      },
+      {
+        "code": "601868",
+        "trade_date": "2021-09-28",
+        "pre_close": 1.96
+      },
+      {
+        "code": "601956",
+        "trade_date": "2020-12-25",
+        "pre_close": 9.77
+      },
+      {
+        "code": "601956",
+        "trade_date": "2020-12-25",
+        "pre_close": 9.77
+      },
+      {
+        "code": "603133",
+        "trade_date": "2024-06-05",
+        "pre_close": 1.98
+      },
+      {
+        "code": "603133",
+        "trade_date": "2024-06-05",
+        "pre_close": 1.98
+      },
+      {
+        "code": "603157",
+        "trade_date": "2022-04-22",
+        "pre_close": 1.05
+      },
+      {
+        "code": "603157",
+        "trade_date": "2022-04-22",
+        "pre_close": 1.05
+      },
+      {
+        "code": "603603",
+        "trade_date": "2024-03-27",
+        "pre_close": 1.0
+      },
+      {
+        "code": "603603",
+        "trade_date": "2024-03-27",
+        "pre_close": 1.0
+      },
+      {
+        "code": "603996",
+        "trade_date": "2022-04-22",
+        "pre_close": 0.96
+      },
+      {
+        "code": "603996",
+        "trade_date": "2022-04-22",
+        "pre_close": 0.96
+      }
+    ],
+    "verdict": "PASS：双方均有限价的行零差异，自算分段规则可替代官方 stk_limit；另有 124 处「官方不设限 / 自算有限价」（退市整理首日、恢复上市首日）与 5 处「上市首日口径差异」（IPO/换股/重新上市首日申报区间不同）（规则段未建模；方向为保守——回测只会把可买误判为买不到，不会制造虚假成交）"
+  }
+}
